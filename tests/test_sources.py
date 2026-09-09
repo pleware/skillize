@@ -20,6 +20,16 @@ from skillize.sources import (
 )
 
 
+def test_default_sources_include_php_packs() -> None:
+    assert DEFAULT_SOURCES[:3] == (
+        "addyosmani/agent-skills",
+        "vercel-labs/agent-skills",
+        "obra/superpowers",
+    )
+    assert "AsyrafHussin/agent-skills" in DEFAULT_SOURCES
+    assert "me-shaon/agent-skills" in DEFAULT_SOURCES
+
+
 def test_names_from_skill_markdown_paths() -> None:
     names = names_from_tree_paths(
         [
@@ -156,7 +166,7 @@ def test_refresh_uses_injected_fetch_and_writes_cache(tmp_path: Path) -> None:
         "incremental-implementation",
         "planning-and-task-breakdown",
     )
-    assert fetched[:3] == list(DEFAULT_SOURCES)
+    assert fetched[: len(DEFAULT_SOURCES)] == list(DEFAULT_SOURCES)
     assert "2 skills" in note
     cache = json.loads((tmp_path / ".skillize" / "catalogue.json").read_text(encoding="utf-8"))
     assert cache["version"] == 2

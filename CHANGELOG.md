@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Always list addyosmani, vercel-labs, and obra/superpowers in Install New, then yaml `sources:` and the lock.
+- Always list addyosmani, vercel-labs, superpowers, AsyrafHussin (PHP 8 / Laravel), and me-shaon (upgrade / API hardening) in Install New, then yaml `sources:` and the lock.
 - Open configure on a home menu (Installed vs Install New).
 - List browse rows as `owner/repo/skill-name` and fetch both `sources:` and lock repos.
 - Browse GitHub packs with search and install `SKILL.md` into `.agents/skills/` (`skillize configure`, `skillize install`).

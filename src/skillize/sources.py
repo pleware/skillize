@@ -27,6 +27,8 @@ DEFAULT_SOURCES = (
     "addyosmani/agent-skills",
     "vercel-labs/agent-skills",
     "obra/superpowers",
+    "AsyrafHussin/agent-skills",
+    "me-shaon/agent-skills",
 )
 
 JsonGet = Callable[[str], Any]
