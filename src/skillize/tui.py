@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -224,7 +225,7 @@ class ConfigureTools:
             self._refresh_when()
             self._refresh_status()
 
-        self.push_screen(WhenScreen(name, self._when.get(name)), apply)
+        self.app.push_screen(WhenScreen(name, self._when.get(name)), apply)
 
     def action_save(self) -> None:
         if not self._skills:
@@ -423,7 +424,7 @@ class CatalogueTools:
         policy = load_policy_or_empty(self._root)
         extra = names_of(self._entries)
         skills = compose_skills(self._root, policy, extra_names=extra)
-        self.push_screen(ConfigureScreen(self._root, policy, skills))
+        self.app.push_screen(ConfigureScreen(self._root, policy, skills))
 
 
 HOME_CSS = """
@@ -574,8 +575,11 @@ class InstallScreen(CatalogueTools, Screen[None]):
     ) -> None:
         super().__init__()
         self.catalogue_init(root, policy, entries, note, install, want_installed=False)
+        self._busy = False
 
     def action_close_install(self) -> None:
+        if self._busy:
+            return
         self.dismiss()
 
     def action_quit(self) -> None:
@@ -586,16 +590,36 @@ class InstallScreen(CatalogueTools, Screen[None]):
         self.action_install()
 
     def action_install(self) -> None:
+        if self._busy:
+            return
         entry = self._highlighted_entry()
         if entry is None:
             return
+        self._busy = True
+        listing = self.query_one("#browse", OptionList)
+        search = self.query_one("#search", Input)
+        listing.disabled = True
+        search.disabled = True
+        self.query_one("#hint", Static).update(
+            f"{self._root}\nInstalling {self._prompt(entry)}…\n"
+            "Fetching files. The list will update when it finishes."
+        )
+        self.run_worker(self._install_worker(entry), exclusive=True, group="install")
+
+    async def _install_worker(self, entry: RemoteSkill) -> None:
+        listing = self.query_one("#browse", OptionList)
+        search = self.query_one("#search", Input)
         try:
-            dest = self._install(self._root, entry)
+            dest = await asyncio.to_thread(self._install, self._root, entry)
         except SkillizeError as exc:
             self.notify(str(exc), severity="error")
-            return
-        self.notify(f"Installed {entry.name} → {dest}")
-        self._refresh_list()
+        else:
+            self.notify(f"Installed {entry.name} → {dest}")
+        finally:
+            self._busy = False
+            listing.disabled = False
+            search.disabled = False
+            self._refresh_list()
 
 
 def _snapshot(skills: tuple[Skill, ...]) -> tuple[tuple[str, bool, str | None], ...]:

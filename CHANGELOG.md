@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Push Enable / When from the App so Installed and Install New no longer crash on `c` / `e`.
+- Show an Installing… message and keep the TUI alive while a skill downloads.
 - Re-count the home menu after a screen closes, so a fresh install shows up.
 - Fix the Installed / Install New search box: typing filters the list again.
 - Ship a bundled `php7` skill (PHP 7.2–7.4) so Install New works offline.
