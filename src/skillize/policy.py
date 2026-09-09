@@ -97,6 +97,20 @@ def with_skill_when(policy: Policy, name: str, when: str | None) -> Policy:
     )
 
 
+def without_skill(policy: Policy, name: str) -> Policy:
+    """Return a copy with `name` dropped from `skills:`."""
+    kept = tuple(item for item in policy.skills if item.name != name)
+    if kept == policy.skills:
+        return policy
+    return Policy(
+        path=policy.path,
+        version=policy.version,
+        skills=kept,
+        sources=policy.sources,
+        sources_declared=policy.sources_declared,
+    )
+
+
 def schema_bytes() -> bytes:
     packaged = files("skillize") / "data" / SCHEMA_RESOURCE
     try:

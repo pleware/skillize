@@ -13,6 +13,7 @@ from skillize.policy import (
     schema_document,
     with_skill_enabled,
     with_skill_when,
+    without_skill,
 )
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples" / "skillize.yaml"
@@ -94,3 +95,17 @@ def test_with_skill_when_keeps_enabled(tmp_path: Path) -> None:
     updated = with_skill_when(policy, "php7", "PHP major 7 only.")
     assert updated.skills[0].enabled is True
     assert updated.skills[0].when == "PHP major 7 only."
+
+
+def test_without_skill_drops_the_row(tmp_path: Path) -> None:
+    policy = Policy(
+        path=tmp_path / "skillize.yaml",
+        version=1,
+        skills=(
+            Skill(name="php7", enabled=True),
+            Skill(name="api-design-patterns", enabled=True),
+        ),
+    )
+    updated = without_skill(policy, "php7")
+    assert [skill.name for skill in updated.skills] == ["api-design-patterns"]
+    assert without_skill(policy, "missing") is policy

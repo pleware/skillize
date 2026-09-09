@@ -6,7 +6,7 @@ from pathlib import Path
 from textual.widgets import Input, OptionList, Static
 
 from skillize.catalogue import compose_skills
-from skillize.policy import Policy, load_policy, load_policy_or_empty
+from skillize.policy import Policy, Skill, load_policy, load_policy_or_empty, save_policy
 from skillize.sources import RemoteSkill
 from skillize.tui import ConfigureApp, InstalledScreen, InstallScreen, SkillizeApp
 
@@ -121,6 +121,54 @@ async def test_installed_toggle_enables_highlighted_skill(tmp_path: Path) -> Non
         await pilot.press("space")
         await _wait_until(pilot, lambda: load_policy(tmp_path).enabled_names() == ())
         assert str(listing.get_option_at_index(0).prompt).startswith("off")
+
+
+async def test_installed_u_uninstalls_highlighted_skill(tmp_path: Path) -> None:
+    already = tmp_path / ".agents" / "skills" / "php7"
+    already.mkdir(parents=True)
+    (already / "SKILL.md").write_text("# php7\n", encoding="utf-8")
+    (tmp_path / "skills-lock.json").write_text(
+        '{"version": 1, "skills": {"php7": {"source": "pleware/skillize",'
+        ' "sourceType": "bundled"}}}\n',
+        encoding="utf-8",
+    )
+    entries = (
+        RemoteSkill("php7", "pleware/skillize", "bundled/php7/SKILL.md"),
+        RemoteSkill(
+            "php-best-practices",
+            "AsyrafHussin/agent-skills",
+            "skills/php-best-practices/SKILL.md",
+        ),
+    )
+    save_policy(
+        Policy(
+            path=tmp_path / "skillize.yaml",
+            version=1,
+            skills=(Skill(name="php7", enabled=True),),
+        )
+    )
+    policy = load_policy(tmp_path)
+    app = SkillizeApp(tmp_path, policy, entries, "2 skills")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.click("#menu")
+        await pilot.press("enter")
+        await pilot.pause()
+        assert isinstance(app.screen, InstalledScreen)
+        listing = app.screen.query_one("#browse", OptionList)
+        assert listing.option_count == 1
+        await pilot.press("u")
+        await _wait_until(pilot, lambda: not already.exists())
+        assert listing.option_count == 0
+        assert "php7" not in load_policy(tmp_path).enabled_names()
+        assert all(skill.name != "php7" for skill in load_policy(tmp_path).skills)
+        lock = (tmp_path / "skills-lock.json").read_text(encoding="utf-8")
+        assert "php7" not in lock
+        await pilot.press("escape")
+        await pilot.pause()
+        menu = app.query_one("#menu", OptionList)
+        assert str(menu.get_option_at_index(0).prompt) == "Installed (0)"
+        assert str(menu.get_option_at_index(1).prompt) == "Install New (2)"
 
 
 async def test_home_menu_counts_refresh_after_install(tmp_path: Path) -> None:

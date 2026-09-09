@@ -27,7 +27,7 @@ from textual.widgets.option_list import Option
 from textual.widgets.selection_list import Selection
 
 from .errors import SkillizeError
-from .install import install_skill
+from .install import install_skill, uninstall_skill
 from .policy import (
     Policy,
     Skill,
@@ -431,7 +431,7 @@ class CatalogueTools:
         panel = self.query_one("#hint", Static)
         entry = self._highlighted_entry()
         if self._want_installed:
-            keys = "Space, Enter or c turns it on or off. e edits when. / search. b home."
+            keys = "Space, Enter or c turns it on or off. e edits when. u uninstalls. / search. b home."
         else:
             keys = "Enter or i copies it onto this tree. / search. b home."
         if entry is None:
@@ -585,6 +585,7 @@ class InstalledScreen(CatalogueTools, Screen[None]):
         Binding("space", "toggle_enabled", "On/off"),
         Binding("c", "toggle_enabled", "On/off"),
         Binding("e", "edit_when", "When"),
+        Binding("u", "uninstall", "Uninstall"),
         Binding("escape", "close_list", "Home", show=True),
         Binding("b", "close_list", "Home"),
         Binding("q", "quit", "Quit"),
@@ -621,6 +622,19 @@ class InstalledScreen(CatalogueTools, Screen[None]):
         save_policy(self._policy)
         self._refresh_list(keep=entry.name)
         self.notify(f"{entry.name} {'on' if turned_on else 'off'}")
+
+    def action_uninstall(self) -> None:
+        entry = self._highlighted_entry()
+        if entry is None:
+            return
+        try:
+            uninstall_skill(self._root, entry.name)
+        except SkillizeError as exc:
+            self.notify(str(exc), severity="error")
+            return
+        self._policy = load_policy_or_empty(self._root)
+        self._refresh_list()
+        self.notify(f"Uninstalled {entry.name}")
 
     def action_edit_when(self) -> None:
         entry = self._highlighted_entry()

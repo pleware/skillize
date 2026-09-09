@@ -7,7 +7,8 @@ from pathlib import Path
 import pytest
 
 from skillize.errors import InstallError
-from skillize.install import install_skill
+from skillize.install import install_skill, uninstall_skill
+from skillize.policy import Policy, Skill, load_policy, save_policy
 from skillize.sources import RemoteSkill
 
 ENTRY = RemoteSkill(
@@ -126,3 +127,47 @@ def test_install_bundled_php7(tmp_path: Path) -> None:
     assert body["sourceType"] == "bundled"
     assert body["skillPath"] == "bundled/php7/SKILL.md"
     assert body["computedHash"] == hashlib.sha256(skill_md.read_bytes()).hexdigest()
+
+
+def test_uninstall_removes_files_lock_and_policy(tmp_path: Path) -> None:
+    from skillize.builtin import bundled_entries
+
+    php7 = next(entry for entry in bundled_entries() if entry.name == "php7")
+    dest = install_skill(tmp_path, php7)
+    keep = tmp_path / ".agents" / "skills" / "keep-me"
+    keep.mkdir(parents=True)
+    (keep / "SKILL.md").write_text("# keep\n", encoding="utf-8")
+    lock_path = tmp_path / "skills-lock.json"
+    lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    lock["skills"]["keep-me"] = {
+        "source": "local",
+        "sourceType": "github",
+        "skillPath": ".agents/skills/keep-me/SKILL.md",
+        "computedHash": "abc",
+    }
+    lock_path.write_text(json.dumps(lock, indent=2) + "\n", encoding="utf-8")
+    save_policy(
+        Policy(
+            path=tmp_path / "skillize.yaml",
+            version=1,
+            skills=(
+                Skill(name="php7", enabled=True),
+                Skill(name="keep-me", enabled=True),
+            ),
+        )
+    )
+
+    uninstall_skill(tmp_path, "php7")
+
+    assert not dest.exists()
+    assert (keep / "SKILL.md").is_file()
+    leftover = json.loads(lock_path.read_text(encoding="utf-8"))
+    assert "php7" not in leftover["skills"]
+    assert "keep-me" in leftover["skills"]
+    remaining = load_policy(tmp_path)
+    assert [skill.name for skill in remaining.skills] == ["keep-me"]
+
+
+def test_uninstall_rejects_unsafe_name(tmp_path: Path) -> None:
+    with pytest.raises(InstallError, match="not a skill name"):
+        uninstall_skill(tmp_path, "../etc")

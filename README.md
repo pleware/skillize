@@ -92,10 +92,11 @@ obra/superpowers, AsyrafHussin, me-shaon — plus `sources:` and extra
 repos in `skills-lock.json`). Rows are `owner/repo/skill-name`.
 
 On **Installed**, Space / Enter / `c` turns the highlighted skill on or
-off and writes `skillize.yaml`. `e` edits `when`. php7 and php8 cannot
-both be on. On **Install New**, `i` / Enter copies the skill onto disk
-and upserts `skills-lock.json`. `/` searches, `b` / Escape returns home,
-`q` quits.
+off and writes `skillize.yaml`. `e` edits `when`. `u` uninstalls it:
+deletes `.agents/skills/<name>/`, the lock row, and the yaml row. php7
+and php8 cannot both be on. On **Install New**, `i` / Enter copies the
+skill onto disk and upserts `skills-lock.json`. `/` searches, `b` /
+Escape returns home, `q` quits.
 
 `SKILLIZE_OFFLINE=1` uses `.skillize/catalogue.json`. The kit does not
 write `.cursor/`. Host mount remains agentize.

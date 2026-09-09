@@ -11,16 +11,18 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 
 from .builtin import BUNDLED_PACKAGE, is_bundled
-from .catalogue import SKILL_FILE, skill_dir
+from .catalogue import SKILL_FILE, SKILLS_DIR, skill_dir
 from .errors import InstallError
+from .policy import load_policy, save_policy, without_skill
 from .sources import (
     API,
     LOCK_NAME,
+    SKILL_NAME,
     RemoteSkill,
     github_get_bytes,
     github_get_json,
 )
-from .store_tree import ensure_data_dir
+from .store_tree import config_path, ensure_data_dir
 
 MAX_FILES = 80
 MAX_BYTES = 1_048_576
@@ -28,6 +30,38 @@ LOCK_VERSION = 1
 
 JsonGet = Callable[[str], object]
 BytesGet = Callable[[str], bytes]
+
+
+def uninstall_skill(project_root: Path, name: str) -> None:
+    """Remove `.agents/skills/<name>/`, the lock row, and the yaml row."""
+    dest = _installed_dir(project_root, name)
+    if dest.is_dir():
+        shutil.rmtree(dest)
+    elif dest.exists():
+        dest.unlink()
+    _drop_lock(project_root, name)
+    path = config_path(project_root)
+    if not path.is_file():
+        return
+    policy = load_policy(project_root)
+    updated = without_skill(policy, name)
+    if updated is not policy:
+        save_policy(updated)
+
+
+def _installed_dir(project_root: Path, name: str) -> Path:
+    if not SKILL_NAME.fullmatch(name):
+        raise InstallError(f"not a skill name: {name}")
+    dest = skill_dir(project_root, name)
+    skills_root = (project_root / SKILLS_DIR).resolve()
+    resolved = dest.resolve()
+    try:
+        resolved.relative_to(skills_root)
+    except ValueError as exc:
+        raise InstallError(f"unsafe skill path: {name}") from exc
+    if resolved == skills_root:
+        raise InstallError(f"unsafe skill path: {name}")
+    return dest
 
 
 def install_skill(
@@ -212,3 +246,21 @@ def _upsert_lock(
     raw["version"] = raw.get("version", LOCK_VERSION)
     raw["skills"] = skills
     path.write_text(json.dumps(raw, indent=2) + "\n", encoding="utf-8", newline="\n")
+
+
+def _drop_lock(project_root: Path, name: str) -> None:
+    path = project_root / LOCK_NAME
+    if not path.is_file():
+        return
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    if not isinstance(loaded, dict):
+        return
+    skills = loaded.get("skills")
+    if not isinstance(skills, dict) or name not in skills:
+        return
+    skills.pop(name, None)
+    loaded["skills"] = skills
+    path.write_text(json.dumps(loaded, indent=2) + "\n", encoding="utf-8", newline="\n")

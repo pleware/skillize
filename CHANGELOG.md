@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Uninstall the highlighted Installed skill with `u` (folder, lock row, yaml row).
 - Toggle the highlighted Installed skill on or off in place (no second catalogue).
 - Focus the skill list on Installed and Install New, not the search box (`/` still searches).
 - Push Enable / When from the App so Installed and Install New no longer crash on `c` / `e`.
