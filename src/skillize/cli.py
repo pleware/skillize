@@ -9,8 +9,9 @@ from pathlib import Path
 from . import __version__
 from .errors import SkillizeError
 from .policy import load_policy
-from .store_tree import CONFIG_NAME
+from .store_tree import CONFIG_NAME, config_is_ignored, config_path, ensure_data_dir
 from .tui import run_configure
+from .wrapper import UNIX_NAME, write_wrappers
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,6 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
     subcommands = parser.add_subparsers(dest="command")
     subcommands.add_parser("check", help=f"validate {CONFIG_NAME} against schema v1")
     subcommands.add_parser("configure", help=f"checkbox TUI for {CONFIG_NAME}")
+    subcommands.add_parser("init", help=f"plant launchers next to {CONFIG_NAME}")
     return parser
 
 
@@ -40,6 +42,34 @@ def cmd_check(root: Path) -> int:
     print(f"skillize: {len(enabled)} enabled / {len(policy.skills)} listed")
     for name in enabled:
         print(f"skillize: on  {name}")
+    return 0
+
+
+def cmd_init(root: Path) -> int:
+    directory = ensure_data_dir(root)
+    config = config_path(root)
+    print(f"skillize: policy {config}")
+    print(f"skillize: data   {directory}")
+
+    for path in write_wrappers(root):
+        print(f"skillize: launcher {path.name}")
+    unix = root / UNIX_NAME
+    if unix.is_dir():
+        print(
+            f"skillize: skip {UNIX_NAME} (a directory occupies that name)",
+            file=sys.stderr,
+        )
+
+    if config_is_ignored(root):
+        print(
+            f"skillize: {CONFIG_NAME} is ignored by .gitignore, so it can never be\n"
+            f"skillize: committed. Whitelist it with: !/{CONFIG_NAME}",
+            file=sys.stderr,
+        )
+        return 1
+
+    if not config.is_file():
+        print(f"skillize: write {config} to continue")
     return 0
 
 
@@ -60,6 +90,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_check(root)
         if command == "configure":
             return cmd_configure(root)
+        if command == "init":
+            return cmd_init(root)
     except SkillizeError as exc:
         print(f"skillize: {exc}", file=sys.stderr)
         return 1

@@ -11,8 +11,8 @@ install a toolchain ([ignite](https://github.com/pleware/ignite)).
 
 Python 3.11+ on Windows, macOS, and Linux — the same runtime as agentize.
 
-Status: first version — schema v1, `skillize check`, and a Textual
-checkbox TUI (`skillize configure`).
+Status: first version — schema v1, `skillize check`, a Textual checkbox
+TUI (`skillize configure`), and trampoline launchers (`skillize init`).
 
 ## Consumer layout
 
@@ -22,6 +22,7 @@ plus a local directory for machine state.
 ```text
 <workspace>/
   skillize.yaml    # policy — commit this
+  skillize         # trampoline (also skillize.ps1 / skillize.cmd)
   .skillize/       # machine state — gitignore this
 ```
 
@@ -42,6 +43,30 @@ skills:
 The kit name is **skillize** (two L's). Empty `skills:` means nothing is
 enabled, not everything. Pin hashes stay in `skills-lock.json` — v1 does
 not duplicate the lock.
+
+## Launchers
+
+A consumer commits three trampolines next to `skillize.yaml`. They call
+`uvx --refresh --from git+https://github.com/pleware/skillize.git`, so a
+week-old clone still starts today's kit. In this repository they call
+`uv run` instead.
+
+```sh
+uv run skillize init
+./skillize check
+# Windows: .\skillize.ps1 check   or   .\skillize.cmd check
+```
+
+`SKILLIZE_OFFLINE=1` skips the GitHub refresh and uses the uv cache.
+
+Deny-by-default `.gitignore` must whitelist them:
+
+```gitignore
+!/skillize.yaml
+!/skillize
+!/skillize.ps1
+!/skillize.cmd
+```
 
 ## Check
 
