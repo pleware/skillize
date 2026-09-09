@@ -203,9 +203,12 @@ class ConfigureTools:
             f"{self._path.name}  ·  {on} on  ·  {mark}"
         )
 
-    @on(SelectionList.SelectedChanged)
-    @on(SelectionList.SelectionHighlighted)
-    def on_list_changed(self) -> None:
+    # Named by Textual convention, not @on: see CatalogueTools below.
+    def on_selection_list_selected_changed(self) -> None:
+        self._refresh_when()
+        self._refresh_status()
+
+    def on_selection_list_selection_highlighted(self) -> None:
         self._refresh_when()
         self._refresh_status()
 
@@ -396,17 +399,19 @@ class CatalogueTools:
             return
         panel.update(f"{self._root}\n{entry.skill_path}  ·  {keys}")
 
-    @on(Input.Changed, "#search")
-    def on_search_changed(self) -> None:
-        self._refresh_list()
+    # Named by Textual convention, not @on: a plain mixin is not a MessagePump
+    # subclass, so decorated handlers declared here are never registered.
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id == "search":
+            self._refresh_list()
 
-    @on(Input.Submitted, "#search")
-    def on_search_submitted(self) -> None:
-        self.query_one("#browse", OptionList).focus()
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "search":
+            self.query_one("#browse", OptionList).focus()
 
-    @on(OptionList.OptionHighlighted, "#browse")
-    def on_browse_highlighted(self) -> None:
-        self._refresh_hint()
+    def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
+        if event.option_list.id == "browse":
+            self._refresh_hint()
 
     def action_focus_search(self) -> None:
         self.query_one("#search", Input).focus()

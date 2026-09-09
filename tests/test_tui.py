@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from textual.widgets import OptionList
+from textual.widgets import Input, OptionList
 
 from skillize.catalogue import compose_skills
 from skillize.policy import Policy, load_policy, load_policy_or_empty
@@ -83,3 +83,42 @@ async def test_home_menu_opens_installed_and_install_new(tmp_path: Path) -> None
         await pilot.pause()
     assert installed == ["planning-and-task-breakdown"]
     assert (tmp_path / ".agents" / "skills" / "planning-and-task-breakdown" / "SKILL.md").is_file()
+
+
+async def test_install_search_filters_the_list(tmp_path: Path) -> None:
+    entries = (
+        RemoteSkill(
+            "php-best-practices",
+            "AsyrafHussin/agent-skills",
+            "skills/php-best-practices/SKILL.md",
+        ),
+        RemoteSkill(
+            "laravel-queues",
+            "AsyrafHussin/agent-skills",
+            "skills/laravel-queues/SKILL.md",
+        ),
+        RemoteSkill(
+            "php7",
+            "pleware/skillize",
+            "bundled/php7/SKILL.md",
+        ),
+    )
+    policy = Policy(path=tmp_path / "skillize.yaml", version=1, skills=())
+    screen = InstallScreen(tmp_path, policy, entries, "3 skills")
+    app = SkillizeApp(tmp_path, policy, entries, "3 skills")
+    async with app.run_test() as pilot:
+        await app.push_screen(screen)
+        await pilot.pause()
+        listing = screen.query_one("#browse", OptionList)
+        assert listing.option_count == 3
+        await pilot.press("p", "h", "p")
+        await pilot.pause()
+        assert screen.query_one("#search", Input).value == "php"
+        prompts = [
+            str(listing.get_option_at_index(index).prompt)
+            for index in range(listing.option_count)
+        ]
+    assert prompts == [
+        "AsyrafHussin/agent-skills/php-best-practices",
+        "pleware/skillize/php7",
+    ]
