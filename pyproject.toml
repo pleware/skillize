@@ -35,6 +35,7 @@ packages = ["src/skillize"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "schema/v1.json" = "skillize/data/v1.json"
+"src/skillize/bundled/php7/SKILL.md" = "skillize/bundled/php7/SKILL.md"
 
 [tool.ruff]
 line-length = 100

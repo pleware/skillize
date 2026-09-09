@@ -86,9 +86,10 @@ path other than the current working directory.
 
 Interactive UI ([Textual](https://textual.textualize.io), MIT). The first
 screen is a menu: **Installed** (skills already in `.agents/skills/`) and
-**Install New** (remaining `SKILL.md` files from the built-in GitHub
-packs — addyosmani, vercel-labs, obra/superpowers, AsyrafHussin, me-shaon
-— plus `sources:` and extra repos in `skills-lock.json`). Rows are
+**Install New** (remaining `SKILL.md` files from the kit's bundled
+`php7` skill, then GitHub packs — addyosmani, vercel-labs,
+obra/superpowers, AsyrafHussin, me-shaon — plus `sources:` and extra
+repos in `skills-lock.json`). Rows are
 `owner/repo/skill-name` (type to filter). `i` / Enter copies the
 highlighted skill onto disk and upserts `skills-lock.json`. `c` opens the
 enable/when checkboxes. Space toggles a skill, `e` edits `when`, `s`

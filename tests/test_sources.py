@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from skillize.builtin import BUNDLED_REPO, bundled_entries
 from skillize.catalogue import compose_skills
 from skillize.policy import Policy, Skill, load_policy, save_policy
 from skillize.sources import (
@@ -28,6 +29,13 @@ def test_default_sources_include_php_packs() -> None:
     )
     assert "AsyrafHussin/agent-skills" in DEFAULT_SOURCES
     assert "me-shaon/agent-skills" in DEFAULT_SOURCES
+
+
+def test_bundled_catalogue_includes_php7() -> None:
+    entries = bundled_entries()
+    assert [entry.name for entry in entries] == ["php7"]
+    assert entries[0].repo == BUNDLED_REPO
+    assert entries[0].skill_path == "bundled/php7/SKILL.md"
 
 
 def test_names_from_skill_markdown_paths() -> None:
@@ -162,12 +170,13 @@ def test_refresh_uses_injected_fetch_and_writes_cache(tmp_path: Path) -> None:
         return ()
 
     names, note = refresh_catalogue(tmp_path, policy, fetch=fake_fetch)
-    assert tuple(entry.name for entry in names) == (
+    assert {entry.name for entry in names} == {
         "incremental-implementation",
+        "php7",
         "planning-and-task-breakdown",
-    )
+    }
     assert fetched[: len(DEFAULT_SOURCES)] == list(DEFAULT_SOURCES)
-    assert "2 skills" in note
+    assert "bundled" in note
     cache = json.loads((tmp_path / ".skillize" / "catalogue.json").read_text(encoding="utf-8"))
     assert cache["version"] == 2
     assert cache["repos"]["addyosmani/agent-skills"] == [
@@ -203,7 +212,7 @@ def test_refresh_offline_reads_cache(tmp_path: Path, monkeypatch) -> None:
         raise AssertionError("must not hit the network offline")
 
     names, note = refresh_catalogue(tmp_path, policy, fetch=boom)
-    assert tuple(entry.name for entry in names) == ("git-workflow-and-versioning",)
+    assert {entry.name for entry in names} == {"git-workflow-and-versioning", "php7"}
     assert "offline" in note
 
 

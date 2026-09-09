@@ -10,6 +10,7 @@ from collections.abc import Callable
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 
+from .builtin import BUNDLED_PACKAGE, is_bundled
 from .catalogue import SKILL_FILE, skill_dir
 from .errors import InstallError
 from .sources import (
@@ -37,6 +38,9 @@ def install_skill(
     get_bytes: BytesGet = github_get_bytes,
 ) -> Path:
     """Download `entry` into `.agents/skills/<name>/` and upsert `skills-lock.json`."""
+    if is_bundled(entry):
+        return _install_bundled(project_root, entry)
+
     files = _list_skill_files(entry, get_json)
     if not files:
         raise InstallError(f"{entry.name}: GitHub listed no files")
@@ -66,7 +70,46 @@ def install_skill(
             dest.unlink()
         shutil.move(str(staging), str(dest))
         moved = True
-        _upsert_lock(project_root, entry, digest)
+        _upsert_lock(project_root, entry, digest, source_type="github")
+        return dest
+    finally:
+        if not moved and staging.is_dir():
+            shutil.rmtree(staging)
+
+
+def _install_bundled(project_root: Path, entry: RemoteSkill) -> Path:
+    from importlib.resources import as_file
+    from importlib.resources import files as package_files
+
+    dest = skill_dir(project_root, entry.name)
+    staging_root = ensure_data_dir(project_root)
+    staging = Path(tempfile.mkdtemp(prefix="install-", dir=staging_root))
+    moved = False
+    try:
+        packaged = package_files(BUNDLED_PACKAGE) / entry.name
+        if not (packaged / SKILL_FILE).is_file():
+            raise InstallError(f"{entry.name}: bundled SKILL.md missing")
+        with as_file(packaged) as src:
+            for item in Path(src).iterdir():
+                if item.name == "__pycache__":
+                    continue
+                target = staging / item.name
+                if item.is_dir():
+                    shutil.copytree(item, target)
+                else:
+                    shutil.copy2(item, target)
+        skill_md = staging / SKILL_FILE
+        if not skill_md.is_file():
+            raise InstallError(f"{entry.name}: bundled SKILL.md missing")
+        digest = hashlib.sha256(skill_md.read_bytes()).hexdigest()
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if dest.is_dir():
+            shutil.rmtree(dest)
+        elif dest.exists():
+            dest.unlink()
+        shutil.move(str(staging), str(dest))
+        moved = True
+        _upsert_lock(project_root, entry, digest, source_type="bundled")
         return dest
     finally:
         if not moved and staging.is_dir():
@@ -139,7 +182,13 @@ def _assert_safe_rel(rel: str) -> None:
         raise InstallError(f"unsafe skill path: {rel}")
 
 
-def _upsert_lock(project_root: Path, entry: RemoteSkill, digest: str) -> None:
+def _upsert_lock(
+    project_root: Path,
+    entry: RemoteSkill,
+    digest: str,
+    *,
+    source_type: str = "github",
+) -> None:
     path = project_root / LOCK_NAME
     raw: dict = {}
     if path.is_file():
@@ -156,7 +205,7 @@ def _upsert_lock(project_root: Path, entry: RemoteSkill, digest: str) -> None:
     if not isinstance(existing, dict):
         existing = {}
     existing["source"] = entry.repo
-    existing["sourceType"] = "github"
+    existing["sourceType"] = source_type
     existing["skillPath"] = entry.skill_path
     existing["computedHash"] = digest
     skills[entry.name] = existing

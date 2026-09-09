@@ -33,8 +33,8 @@ def build_parser() -> argparse.ArgumentParser:
     subcommands = parser.add_subparsers(dest="command")
     subcommands.add_parser("check", help=f"validate {CONFIG_NAME} against schema v1")
     subcommands.add_parser("configure", help="Installed or Install New, then enable skills")
-    subcommands.add_parser("refresh", help="list GitHub packs into the configure catalogue")
-    install = subcommands.add_parser("install", help="copy a GitHub skill into .agents/skills")
+    subcommands.add_parser("refresh", help="list bundled and GitHub packs")
+    install = subcommands.add_parser("install", help="copy a bundled or GitHub skill")
     install.add_argument("name", help="skill directory name (as listed by refresh)")
     subcommands.add_parser("init", help=f"plant launchers next to {CONFIG_NAME}")
     return parser
@@ -97,12 +97,16 @@ def cmd_install(root: Path, name: str) -> int:
     if not matches:
         print(f"skillize: no skill named {name} in the catalogue", file=sys.stderr)
         return 1
-    if len(matches) > 1:
+    from .builtin import is_bundled
+
+    preferred = [entry for entry in matches if is_bundled(entry)]
+    chosen = (preferred or matches)[0]
+    if len(matches) > 1 and not preferred:
         print(
-            f"skillize: {len(matches)} matches; using {matches[0].repo}",
+            f"skillize: {len(matches)} matches; using {chosen.repo}",
             file=sys.stderr,
         )
-    dest = install_skill(root, matches[0])
+    dest = install_skill(root, chosen)
     print(f"skillize: installed {name} → {dest}")
     return 0
 

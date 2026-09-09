@@ -37,3 +37,13 @@ def test_install_missing_name(tmp_path: Path, monkeypatch, capsys) -> None:
     assert main(["-C", str(tmp_path), "install", "no-such-skill"]) == 1
     err = capsys.readouterr().err
     assert "no skill named no-such-skill" in err
+
+
+def test_install_php7_from_bundle(tmp_path: Path, monkeypatch, capsys) -> None:
+    monkeypatch.setenv("SKILLIZE_OFFLINE", "1")
+    assert main(["-C", str(tmp_path), "install", "php7"]) == 0
+    out = capsys.readouterr().out
+    skill = tmp_path / ".agents" / "skills" / "php7" / "SKILL.md"
+    assert skill.is_file()
+    assert "installed php7" in out
+    assert "name: php7" in skill.read_text(encoding="utf-8")

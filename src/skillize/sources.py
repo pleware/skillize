@@ -294,15 +294,20 @@ def refresh_catalogue(
     *,
     fetch: RepoFetch = fetch_repo_entries,
 ) -> tuple[tuple[RemoteSkill, ...], str]:
-    """Return remote skill rows and a one-line status for the user."""
-    repos = sources_to_fetch(project_root, policy)
-    if not repos:
-        return (), "no GitHub sources in skillize.yaml or skills-lock.json"
+    """Return bundled plus remote skill rows and a one-line status for the user."""
+    from .builtin import bundled_entries
 
+    bundled = bundled_entries()
+    repos = sources_to_fetch(project_root, policy)
     cached = _read_cache(project_root)
     if _offline():
-        entries = _sorted_entries(cached.get(repo, []) for repo in repos)
-        return entries, f"offline · {len(entries)} cached from {len(repos)} repo(s)"
+        remote = _sorted_entries(cached.get(repo, []) for repo in repos)
+        entries = _sorted_entries((bundled, remote))
+        return entries, f"offline · {len(entries)} skills ({len(bundled)} bundled)"
+    if not repos:
+        if bundled:
+            return bundled, f"{len(bundled)} bundled skill(s)"
+        return (), "no GitHub sources in skillize.yaml or skills-lock.json"
 
     collected: dict[str, tuple[RemoteSkill, ...]] = {}
     errors: list[str] = []
@@ -324,9 +329,12 @@ def refresh_catalogue(
 
     if collected:
         _write_cache(project_root, collected)
-    entries = _sorted_entries(collected.values())
+    remote = _sorted_entries(collected.values())
+    entries = _sorted_entries((bundled, remote))
     if errors and entries:
         return entries, f"{len(entries)} skills · {len(errors)} repo error(s)"
     if errors:
+        if bundled:
+            return bundled, f"GitHub list failed ({errors[0]})"
         return (), f"GitHub list failed ({errors[0]})"
-    return entries, f"{len(entries)} skills from {len(repos)} repo(s)"
+    return entries, f"{len(entries)} skills from {len(repos)} repo(s) ({len(bundled)} bundled)"
