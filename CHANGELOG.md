@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Re-count the home menu after a screen closes, so a fresh install shows up.
 - Fix the Installed / Install New search box: typing filters the list again.
 - Ship a bundled `php7` skill (PHP 7.2–7.4) so Install New works offline.
 - Always list addyosmani, vercel-labs, superpowers, AsyrafHussin (PHP 8 / Laravel), and me-shaon (upgrade / API hardening) in Install New, then yaml `sources:` and the lock.

@@ -485,7 +485,8 @@ class SkillizeApp(App[None]):
         self._fill_menu()
         listing.focus()
 
-    def on_screen_resume(self) -> None:
+    def _reload_menu(self, _result: None = None) -> None:
+        """Re-count from disk. ScreenResume does not bubble to the App."""
         self._policy = load_policy_or_empty(self._root)
         self._fill_menu()
 
@@ -505,26 +506,15 @@ class SkillizeApp(App[None]):
         )
 
     def _open_choice(self, choice: str | None) -> None:
-        if choice == "install":
-            self.push_screen(
-                InstallScreen(
-                    self._root,
-                    self._policy,
-                    self._entries,
-                    self._note,
-                    install=self._install,
-                )
-            )
-            return
-        self.push_screen(
-            InstalledScreen(
-                self._root,
-                self._policy,
-                self._entries,
-                self._note,
-                install=self._install,
-            )
+        make = InstallScreen if choice == "install" else InstalledScreen
+        screen = make(
+            self._root,
+            self._policy,
+            self._entries,
+            self._note,
+            install=self._install,
         )
+        self.push_screen(screen, self._reload_menu)
 
     @on(OptionList.OptionSelected, "#menu")
     def on_menu_selected(self, event: OptionList.OptionSelected) -> None:

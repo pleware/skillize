@@ -85,6 +85,43 @@ async def test_home_menu_opens_installed_and_install_new(tmp_path: Path) -> None
     assert (tmp_path / ".agents" / "skills" / "planning-and-task-breakdown" / "SKILL.md").is_file()
 
 
+async def test_home_menu_counts_refresh_after_install(tmp_path: Path) -> None:
+    entries = (
+        RemoteSkill(
+            "planning-and-task-breakdown",
+            "addyosmani/agent-skills",
+            "skills/planning-and-task-breakdown/SKILL.md",
+        ),
+    )
+
+    def fake_install(root: Path, entry: RemoteSkill, **_kwargs) -> Path:
+        dest = root / ".agents" / "skills" / entry.name
+        dest.mkdir(parents=True)
+        (dest / "SKILL.md").write_text("# ok\n", encoding="utf-8")
+        return dest
+
+    policy = Policy(path=tmp_path / "skillize.yaml", version=1, skills=())
+    app = SkillizeApp(tmp_path, policy, entries, "1 skill", install=fake_install)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        menu = app.query_one("#menu", OptionList)
+        assert str(menu.get_option_at_index(0).prompt) == "Installed (0)"
+        assert str(menu.get_option_at_index(1).prompt) == "Install New (1)"
+        await pilot.click("#menu")
+        await pilot.press("down")
+        await pilot.press("enter")
+        await pilot.pause()
+        assert isinstance(app.screen, InstallScreen)
+        await pilot.click("#browse")
+        await pilot.press("i")
+        await pilot.pause()
+        await pilot.press("escape")
+        await pilot.pause()
+        menu = app.query_one("#menu", OptionList)
+        assert str(menu.get_option_at_index(0).prompt) == "Installed (1)"
+        assert str(menu.get_option_at_index(1).prompt) == "Install New (0)"
+
+
 async def test_install_search_filters_the_list(tmp_path: Path) -> None:
     entries = (
         RemoteSkill(
