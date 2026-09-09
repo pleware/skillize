@@ -7,7 +7,7 @@ from textual.widgets import OptionList
 from skillize.catalogue import compose_skills
 from skillize.policy import Policy, load_policy, load_policy_or_empty
 from skillize.sources import RemoteSkill
-from skillize.tui import ConfigureApp, InstallScreen, SkillizeApp
+from skillize.tui import ConfigureApp, InstalledScreen, InstallScreen, SkillizeApp
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples" / "skillize.yaml"
 
@@ -26,7 +26,7 @@ async def test_configure_toggles_and_saves(tmp_path: Path) -> None:
     assert "frontend-design" not in policy.enabled_names()
 
 
-async def test_installed_then_install_screen(tmp_path: Path) -> None:
+async def test_home_menu_opens_installed_and_install_new(tmp_path: Path) -> None:
     already = tmp_path / ".agents" / "skills" / "frontend-design"
     already.mkdir(parents=True)
     (already / "SKILL.md").write_text("# on disk\n", encoding="utf-8")
@@ -55,16 +55,25 @@ async def test_installed_then_install_screen(tmp_path: Path) -> None:
     app = SkillizeApp(tmp_path, policy, entries, "2 skills", install=fake_install)
     async with app.run_test() as pilot:
         await pilot.pause()
-        listing = app.query_one("#browse", OptionList)
-        assert listing.option_count == 1
-        first = str(listing.get_option_at_index(0).prompt)
-        assert "anthropics/skills/frontend-design" in first
-        await pilot.click("#browse")
-        await pilot.press("a")
+        menu = app.query_one("#menu", OptionList)
+        assert menu.option_count == 2
+        assert "Installed" in str(menu.get_option_at_index(0).prompt)
+        assert "Install New" in str(menu.get_option_at_index(1).prompt)
+        await pilot.click("#menu")
+        await pilot.press("enter")
         await pilot.pause()
-        screen = app.screen
-        assert isinstance(screen, InstallScreen)
-        add_list = screen.query_one("#browse", OptionList)
+        assert isinstance(app.screen, InstalledScreen)
+        listing = app.screen.query_one("#browse", OptionList)
+        assert listing.option_count == 1
+        assert "anthropics/skills/frontend-design" in str(listing.get_option_at_index(0).prompt)
+        await pilot.press("escape")
+        await pilot.pause()
+        await pilot.click("#menu")
+        await pilot.press("down")
+        await pilot.press("enter")
+        await pilot.pause()
+        assert isinstance(app.screen, InstallScreen)
+        add_list = app.screen.query_one("#browse", OptionList)
         assert add_list.option_count == 1
         assert "addyosmani/agent-skills/planning-and-task-breakdown" in str(
             add_list.get_option_at_index(0).prompt

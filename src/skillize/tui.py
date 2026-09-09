@@ -261,8 +261,8 @@ class ConfigureScreen(ConfigureTools, Screen[None]):
     CSS = CONFIGURE_CSS
     BINDINGS = [
         *CONFIGURE_BINDINGS,
-        Binding("escape", "close_configure", "Installed", show=True),
-        Binding("b", "close_configure", "Installed"),
+        Binding("escape", "close_configure", "Back", show=True),
+        Binding("b", "close_configure", "Back"),
     ]
 
     def __init__(self, root: Path, policy: Policy, skills: tuple[Skill, ...]) -> None:
@@ -332,7 +332,7 @@ class CatalogueTools:
 
     def on_mount(self) -> None:
         listing = self.query_one("#browse", OptionList)
-        listing.border_title = "Installed" if self._want_installed else "Install"
+        listing.border_title = "Installed" if self._want_installed else "Install New"
         self._refresh_list()
         self.query_one("#search", Input).focus()
 
@@ -377,21 +377,21 @@ class CatalogueTools:
         panel = self.query_one("#hint", Static)
         entry = self._highlighted_entry()
         if self._want_installed:
-            keys = "c enable  ·  a install  ·  q quit"
+            keys = "c enable  ·  b home  ·  q quit"
         else:
-            keys = "Enter / i install  ·  b back  ·  q quit"
+            keys = "Enter / i install  ·  b home  ·  q quit"
         if entry is None:
             if self._pool() or self._query():
                 panel.update(f"{self._root}\n{self._note}\nNo match. {keys}")
             elif self._want_installed:
                 panel.update(
                     f"{self._root}\n{self._note}\n"
-                    "Nothing on disk yet. Press a to install from GitHub packs."
+                    "Nothing on disk yet. b home, then Install New."
                 )
             else:
                 panel.update(
                     f"{self._root}\n{self._note or 'No GitHub packs listed.'}\n"
-                    "Add sources: in skillize.yaml. b back, q quit."
+                    "Add sources: in skillize.yaml. b home, q quit."
                 )
             return
         panel.update(f"{self._root}\n{entry.skill_path}  ·  {keys}")
@@ -421,14 +421,121 @@ class CatalogueTools:
         self.push_screen(ConfigureScreen(self._root, policy, skills))
 
 
-class SkillizeApp(CatalogueTools, App[None]):
+HOME_CSS = """
+Screen {
+    background: $background;
+}
+
+OptionList {
+    border: round $accent;
+    height: auto;
+    max-height: 1fr;
+    padding: 1 1;
+    margin: 1 1;
+}
+
+#hint {
+    height: 5;
+    color: $text-muted;
+    padding: 0 1;
+    border: round $panel;
+    margin: 0 1 1 1;
+}
+"""
+
+
+class SkillizeApp(App[None]):
     TITLE = "skillize"
+    CSS = HOME_CSS
+    BINDINGS = [
+        Binding("q", "quit", "Quit"),
+    ]
+
+    def __init__(
+        self,
+        root: Path,
+        policy: Policy,
+        entries: tuple[RemoteSkill, ...],
+        note: str = "",
+        *,
+        install: InstallFn = install_skill,
+    ) -> None:
+        super().__init__()
+        self._root = root
+        self._policy = policy
+        self._entries = tuple(sorted(entries, key=lambda entry: (entry.repo, entry.name)))
+        self._note = note
+        self._install = install
+        self.sub_title = f"{root} · {note}" if note else str(root)
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield OptionList(id="menu")
+        yield Static(id="hint")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        listing = self.query_one("#menu", OptionList)
+        listing.border_title = "skillize"
+        self._fill_menu()
+        listing.focus()
+
+    def on_screen_resume(self) -> None:
+        self._policy = load_policy_or_empty(self._root)
+        self._fill_menu()
+
+    def _fill_menu(self) -> None:
+        installed, available = split_catalogue(self._root, self._entries)
+        listing = self.query_one("#menu", OptionList)
+        listing.clear_options()
+        listing.add_options(
+            [
+                Option(f"Installed ({len(installed)})", id="installed"),
+                Option(f"Install New ({len(available)})", id="install"),
+            ]
+        )
+        listing.highlighted = 0
+        self.query_one("#hint", Static).update(
+            f"{self._root}\n{self._note}\nEnter opens  ·  q quit"
+        )
+
+    def _open_choice(self, choice: str | None) -> None:
+        if choice == "install":
+            self.push_screen(
+                InstallScreen(
+                    self._root,
+                    self._policy,
+                    self._entries,
+                    self._note,
+                    install=self._install,
+                )
+            )
+            return
+        self.push_screen(
+            InstalledScreen(
+                self._root,
+                self._policy,
+                self._entries,
+                self._note,
+                install=self._install,
+            )
+        )
+
+    @on(OptionList.OptionSelected, "#menu")
+    def on_menu_selected(self, event: OptionList.OptionSelected) -> None:
+        choice = event.option_id
+        if choice not in ("installed", "install"):
+            choice = "install" if event.option_index == 1 else "installed"
+        self._open_choice(choice)
+
+
+class InstalledScreen(CatalogueTools, Screen[None]):
     CSS = CATALOGUE_CSS
     BINDINGS = [
         Binding("slash", "focus_search", "Search"),
-        Binding("a", "add", "Install"),
         Binding("c", "configure", "Enable"),
-        Binding("escape", "blur_search", "List", show=False),
+        Binding("escape", "close_list", "Home", show=True),
+        Binding("b", "close_list", "Home"),
         Binding("q", "quit", "Quit"),
     ]
 
@@ -443,18 +550,12 @@ class SkillizeApp(CatalogueTools, App[None]):
     ) -> None:
         super().__init__()
         self.catalogue_init(root, policy, entries, note, install, want_installed=True)
-        self.sub_title = f"{root} · {note}" if note else str(root)
 
-    def action_add(self) -> None:
-        self.push_screen(
-            InstallScreen(
-                self._root,
-                self._policy,
-                self._entries,
-                self._note,
-                install=self._install,
-            )
-        )
+    def action_close_list(self) -> None:
+        self.dismiss()
+
+    def action_quit(self) -> None:
+        self.app.exit()
 
 
 class InstallScreen(CatalogueTools, Screen[None]):
@@ -462,8 +563,8 @@ class InstallScreen(CatalogueTools, Screen[None]):
     BINDINGS = [
         Binding("slash", "focus_search", "Search"),
         Binding("i", "install", "Install"),
-        Binding("escape", "close_install", "Installed", show=True),
-        Binding("b", "close_install", "Installed"),
+        Binding("escape", "close_install", "Home", show=True),
+        Binding("b", "close_install", "Home"),
         Binding("q", "quit", "Quit"),
     ]
 

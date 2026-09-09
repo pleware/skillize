@@ -12,7 +12,7 @@ install a toolchain ([ignite](https://github.com/pleware/ignite)).
 Python 3.11+ on Windows, macOS, and Linux — the same runtime as agentize.
 
 Status: first version — schema v1, `skillize check`, a Textual TUI
-(`skillize configure`: installed, then install from packs, then enable), trampoline
+(`skillize configure`: Installed or Install New, then enable), trampoline
 launchers (`skillize init`), and `skillize install <name>`.
 
 ## Consumer layout
@@ -85,13 +85,13 @@ path other than the current working directory.
 ## Configure
 
 Interactive UI ([Textual](https://textual.textualize.io), MIT). The first
-screen is **Installed** (skills already in `.agents/skills/`). `a` opens
-**Install**, which lists every remaining `SKILL.md` from GitHub packs in
-`sources:` plus extra repos in `skills-lock.json`. Rows are
+screen is a menu: **Installed** (skills already in `.agents/skills/`) and
+**Install New** (remaining `SKILL.md` files from GitHub packs in
+`sources:` plus extra repos in `skills-lock.json`). Rows are
 `owner/repo/skill-name` (type to filter). `i` / Enter copies the
 highlighted skill onto disk and upserts `skills-lock.json`. `c` opens the
 enable/when checkboxes. Space toggles a skill, `e` edits `when`, `s`
-writes `skillize.yaml`, `b` / Escape returns, `q` quits.
+writes `skillize.yaml`, `b` / Escape returns to the menu, `q` quits.
 
 `SKILLIZE_OFFLINE=1` uses `.skillize/catalogue.json`. The kit does not
 write `.cursor/`. Host mount remains agentize.

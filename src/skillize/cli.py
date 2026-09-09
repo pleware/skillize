@@ -32,7 +32,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subcommands = parser.add_subparsers(dest="command")
     subcommands.add_parser("check", help=f"validate {CONFIG_NAME} against schema v1")
-    subcommands.add_parser("configure", help="installed skills, then install from GitHub packs")
+    subcommands.add_parser("configure", help="Installed or Install New, then enable skills")
     subcommands.add_parser("refresh", help="list GitHub packs into the configure catalogue")
     install = subcommands.add_parser("install", help="copy a GitHub skill into .agents/skills")
     install.add_argument("name", help="skill directory name (as listed by refresh)")

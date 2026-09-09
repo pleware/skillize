@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Split configure into Installed then Install screens.
+- Open configure on a home menu (Installed vs Install New).
 - List browse rows as `owner/repo/skill-name` and fetch both `sources:` and lock repos.
 - Browse GitHub packs with search and install `SKILL.md` into `.agents/skills/` (`skillize configure`, `skillize install`).
 - Refresh the configure catalogue from GitHub packs (`sources:` or `skills-lock.json`) at TUI start.
