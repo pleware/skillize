@@ -29,7 +29,13 @@ from .catalogue import compose_skills, skill_is_installed
 from .errors import SkillizeError
 from .install import install_skill
 from .policy import Policy, Skill, load_policy_or_empty, save_policy
-from .sources import RemoteSkill, filter_entries, names_of, refresh_catalogue
+from .sources import (
+    RemoteSkill,
+    filter_entries,
+    names_of,
+    refresh_catalogue,
+    skill_slug,
+)
 from .store_tree import ensure_data_dir
 
 InstallFn = Callable[..., Path]
@@ -287,7 +293,7 @@ class SkillizeApp(App[None]):
     }
 
     #hint {
-        height: 4;
+        height: 5;
         color: $text-muted;
         padding: 0 1;
         border: round $panel;
@@ -314,11 +320,11 @@ class SkillizeApp(App[None]):
         super().__init__()
         self._root = root
         self._policy = policy
-        self._entries = tuple(sorted(entries, key=lambda entry: (entry.name, entry.repo)))
+        self._entries = tuple(sorted(entries, key=lambda entry: (entry.repo, entry.name)))
         self._note = note
         self._install = install
         self._visible: tuple[RemoteSkill, ...] = self._entries
-        self.sub_title = note or "browse"
+        self.sub_title = f"{root} · {note}" if note else str(root)
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -351,7 +357,7 @@ class SkillizeApp(App[None]):
 
     def _prompt(self, entry: RemoteSkill) -> str:
         mark = "●" if skill_is_installed(self._root, entry.name) else " "
-        return f"{mark} {entry.name}  {entry.repo}"
+        return f"{mark} {skill_slug(entry)}"
 
     def _highlighted_entry(self) -> RemoteSkill | None:
         listing = self.query_one("#browse", OptionList)
@@ -365,17 +371,19 @@ class SkillizeApp(App[None]):
         entry = self._highlighted_entry()
         if entry is None:
             if self._entries:
-                panel.update(f"{self._note}\nNo match. Type to filter, c for enable, q quit.")
+                panel.update(
+                    f"{self._root}\n{self._note}\nNo match. Type to filter, c for enable, q quit."
+                )
             else:
                 panel.update(
-                    f"{self._note or 'No GitHub packs listed.'}\n"
+                    f"{self._root}\n{self._note or 'No GitHub packs listed.'}\n"
                     "Add sources: in skillize.yaml, then refresh. c enable local skills, q quit."
                 )
             return
         mark = "on disk" if skill_is_installed(self._root, entry.name) else "not installed"
         panel.update(
-            f"{entry.skill_path}  ·  {mark}\n"
-            f"{entry.repo}@{entry.branch}  ·  Enter / i install  ·  c enable"
+            f"{self._root}\n"
+            f"{entry.skill_path}  ·  {mark}  ·  Enter / i install  ·  c enable"
         )
 
     @on(Input.Changed, "#search")

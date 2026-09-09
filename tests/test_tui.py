@@ -54,6 +54,8 @@ async def test_browse_filters_and_installs(tmp_path: Path) -> None:
         await pilot.pause()
         listing = app.query_one("#browse", OptionList)
         assert listing.option_count == 2
+        first = str(listing.get_option_at_index(0).prompt)
+        assert "addyosmani/agent-skills/planning-and-task-breakdown" in first
         search = app.query_one("#search", Input)
         search.value = "front"
         search.post_message(Input.Changed(search, search.value))

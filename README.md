@@ -85,10 +85,10 @@ path other than the current working directory.
 ## Configure
 
 Interactive UI ([Textual](https://textual.textualize.io), MIT). The first
-screen **browses** `SKILL.md` names from GitHub packs in `sources:` (or,
-if that key is omitted, unique `source` repos in `skills-lock.json`).
-Type to filter by name, repo, or path. `i` / Enter copies the highlighted
-skill into `.agents/skills/<name>/` and upserts `skills-lock.json`. `c`
+screen **browses** every `SKILL.md` from GitHub packs in `sources:` plus
+any extra repos in `skills-lock.json`. Each row is `owner/repo/skill-name`
+(type to filter). `i` / Enter copies the highlighted skill into
+`.agents/skills/<name>/` and upserts `skills-lock.json`. `c`
 opens the enable/when checkboxes. Space toggles a skill, `e` edits
 `when`, `s` writes `skillize.yaml`, `b` / Escape returns to browse, `q`
 quits.

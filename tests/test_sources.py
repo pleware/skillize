@@ -62,6 +62,7 @@ def test_filter_entries_matches_name_repo_and_path() -> None:
     assert filter_entries(entries, "FRONT") == (entries[1],)
     assert filter_entries(entries, "addyosmani") == (entries[0],)
     assert filter_entries(entries, "skills/frontend") == (entries[1],)
+    assert filter_entries(entries, "anthropics/skills/frontend-design") == (entries[1],)
     assert filter_entries(entries, "") == entries
 
 
@@ -94,7 +95,7 @@ def test_sources_from_lock_are_unique_and_ordered(tmp_path: Path) -> None:
     )
 
 
-def test_yaml_sources_win_over_the_lock(tmp_path: Path) -> None:
+def test_yaml_sources_union_lock(tmp_path: Path) -> None:
     (tmp_path / "skills-lock.json").write_text(
         json.dumps(
             {"skills": {"x": {"source": "anthropics/skills", "sourceType": "github"}}}
@@ -108,7 +109,10 @@ def test_yaml_sources_win_over_the_lock(tmp_path: Path) -> None:
         sources=("addyosmani/agent-skills",),
         sources_declared=True,
     )
-    assert sources_to_fetch(tmp_path, policy) == ("addyosmani/agent-skills",)
+    assert sources_to_fetch(tmp_path, policy) == (
+        "addyosmani/agent-skills",
+        "anthropics/skills",
+    )
 
 
 def test_compose_includes_remote_names_off(tmp_path: Path) -> None:

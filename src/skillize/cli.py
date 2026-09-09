@@ -10,7 +10,7 @@ from . import __version__
 from .errors import SkillizeError
 from .install import install_skill
 from .policy import load_policy, load_policy_or_empty
-from .sources import refresh_catalogue
+from .sources import refresh_catalogue, skill_slug
 from .store_tree import CONFIG_NAME, config_is_ignored, config_path, ensure_data_dir
 from .tui import run_configure
 from .wrapper import UNIX_NAME, write_wrappers
@@ -84,7 +84,7 @@ def cmd_refresh(root: Path) -> int:
     entries, note = refresh_catalogue(root, policy)
     print(f"skillize: {note}")
     for entry in entries:
-        print(f"skillize: {entry.name}  {entry.repo}")
+        print(f"skillize: {skill_slug(entry)}")
     return 0
 
 

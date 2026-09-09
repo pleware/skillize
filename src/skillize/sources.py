@@ -69,6 +69,11 @@ def names_of(entries: Iterable[RemoteSkill]) -> tuple[str, ...]:
     return tuple(sorted({entry.name for entry in entries}))
 
 
+def skill_slug(entry: RemoteSkill) -> str:
+    """Stable browse id: owner/repo/skill-name."""
+    return f"{entry.repo}/{entry.name}"
+
+
 def filter_entries(entries: Iterable[RemoteSkill], query: str) -> tuple[RemoteSkill, ...]:
     needle = query.strip().lower()
     ordered = tuple(entries)
@@ -77,9 +82,7 @@ def filter_entries(entries: Iterable[RemoteSkill], query: str) -> tuple[RemoteSk
     return tuple(
         entry
         for entry in ordered
-        if needle in entry.name.lower()
-        or needle in entry.repo.lower()
-        or needle in entry.skill_path.lower()
+        if needle in skill_slug(entry).lower() or needle in entry.skill_path.lower()
     )
 
 
@@ -156,9 +159,12 @@ def sources_from_lock(project_root: Path) -> tuple[str, ...]:
 
 
 def sources_to_fetch(project_root: Path, policy: Policy) -> tuple[str, ...]:
-    if policy.sources_declared:
-        return policy.sources
-    return sources_from_lock(project_root)
+    """Yaml `sources:` first, then any extra GitHub repos from the lock."""
+    seen: list[str] = []
+    for repo in (*policy.sources, *sources_from_lock(project_root)):
+        if repo not in seen:
+            seen.append(repo)
+    return tuple(seen)
 
 
 def _entry_from_cache(repo: str, item: Any) -> RemoteSkill | None:
