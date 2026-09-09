@@ -1,0 +1,169 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from skillize.catalogue import compose_skills
+from skillize.policy import Policy, Skill, load_policy, save_policy
+from skillize.sources import (
+    fetch_repo_skills,
+    names_from_tree_paths,
+    refresh_catalogue,
+    sources_from_lock,
+    sources_to_fetch,
+)
+
+
+def test_names_from_skill_markdown_paths() -> None:
+    names = names_from_tree_paths(
+        [
+            "skills/api-and-interface-design/SKILL.md",
+            "skills/frontend-design/LICENSE.txt",
+            "plugin/skills/use-modern-go/SKILL.md",
+            "README.md",
+            "skills/Bad-Name/SKILL.md",
+        ]
+    )
+    assert names == ("api-and-interface-design", "use-modern-go")
+
+
+def test_sources_from_lock_are_unique_and_ordered(tmp_path: Path) -> None:
+    (tmp_path / "skills-lock.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "skills": {
+                    "frontend-design": {
+                        "source": "anthropics/skills",
+                        "sourceType": "github",
+                    },
+                    "api-and-interface-design": {
+                        "source": "addyosmani/agent-skills",
+                        "sourceType": "github",
+                    },
+                    "frontend-ui-engineering": {
+                        "source": "addyosmani/agent-skills",
+                        "sourceType": "github",
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert sources_from_lock(tmp_path) == (
+        "anthropics/skills",
+        "addyosmani/agent-skills",
+    )
+
+
+def test_yaml_sources_win_over_the_lock(tmp_path: Path) -> None:
+    (tmp_path / "skills-lock.json").write_text(
+        json.dumps(
+            {"skills": {"x": {"source": "anthropics/skills", "sourceType": "github"}}}
+        ),
+        encoding="utf-8",
+    )
+    policy = Policy(
+        path=tmp_path / "skillize.yaml",
+        version=1,
+        skills=(),
+        sources=("addyosmani/agent-skills",),
+        sources_declared=True,
+    )
+    assert sources_to_fetch(tmp_path, policy) == ("addyosmani/agent-skills",)
+
+
+def test_compose_includes_remote_names_off(tmp_path: Path) -> None:
+    policy = Policy(
+        path=tmp_path / "skillize.yaml",
+        version=1,
+        skills=(Skill(name="frontend-design", enabled=True),),
+    )
+    composed = compose_skills(
+        tmp_path, policy, extra_names=("planning-and-task-breakdown",)
+    )
+    assert [item.name for item in composed] == [
+        "frontend-design",
+        "planning-and-task-breakdown",
+    ]
+    assert composed[1].enabled is False
+
+
+def test_refresh_uses_injected_fetch_and_writes_cache(tmp_path: Path) -> None:
+    policy = Policy(
+        path=tmp_path / "skillize.yaml",
+        version=1,
+        skills=(),
+        sources=("addyosmani/agent-skills",),
+        sources_declared=True,
+    )
+
+    def fake_fetch(repo: str) -> tuple[str, ...]:
+        assert repo == "addyosmani/agent-skills"
+        return ("incremental-implementation", "planning-and-task-breakdown")
+
+    names, note = refresh_catalogue(tmp_path, policy, fetch=fake_fetch)
+    assert names == ("incremental-implementation", "planning-and-task-breakdown")
+    assert "2 skills" in note
+    cache = json.loads((tmp_path / ".skillize" / "catalogue.json").read_text(encoding="utf-8"))
+    assert cache["repos"]["addyosmani/agent-skills"] == [
+        "incremental-implementation",
+        "planning-and-task-breakdown",
+    ]
+
+
+def test_refresh_offline_reads_cache(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("SKILLIZE_OFFLINE", "1")
+    (tmp_path / ".skillize").mkdir()
+    (tmp_path / ".skillize" / "catalogue.json").write_text(
+        json.dumps({"repos": {"addyosmani/agent-skills": ["git-workflow-and-versioning"]}}),
+        encoding="utf-8",
+    )
+    policy = Policy(
+        path=tmp_path / "skillize.yaml",
+        version=1,
+        skills=(),
+        sources=("addyosmani/agent-skills",),
+        sources_declared=True,
+    )
+
+    def boom(_repo: str) -> tuple[str, ...]:
+        raise AssertionError("must not hit the network offline")
+
+    names, note = refresh_catalogue(tmp_path, policy, fetch=boom)
+    assert names == ("git-workflow-and-versioning",)
+    assert "offline" in note
+
+
+def test_fetch_repo_skills_reads_the_git_tree() -> None:
+    calls: list[str] = []
+
+    def get_json(url: str) -> dict:
+        calls.append(url)
+        if url.endswith("/repos/addyosmani/agent-skills"):
+            return {"default_branch": "main"}
+        return {
+            "truncated": False,
+            "tree": [
+                {"path": "skills/code-review-and-quality/SKILL.md", "type": "blob"},
+                {"path": "README.md", "type": "blob"},
+            ],
+        }
+
+    names = fetch_repo_skills("addyosmani/agent-skills", get_json=get_json)
+    assert names == ("code-review-and-quality",)
+    assert len(calls) == 2
+
+
+def test_policy_sources_roundtrip(tmp_path: Path) -> None:
+    original = Policy(
+        path=tmp_path / "skillize.yaml",
+        version=1,
+        skills=(),
+        sources=("addyosmani/agent-skills",),
+        sources_declared=True,
+    )
+    save_policy(original)
+    loaded = load_policy(tmp_path)
+    assert loaded.sources == ("addyosmani/agent-skills",)
+    assert loaded.sources_declared is True

@@ -21,11 +21,15 @@ def discover_names(project_root: Path) -> tuple[str, ...]:
     return tuple(names)
 
 
-def compose_skills(project_root: Path, policy: Policy) -> tuple[Skill, ...]:
-    """Policy entries first, then discovered names not yet listed (off)."""
+def compose_skills(
+    project_root: Path,
+    policy: Policy,
+    extra_names: tuple[str, ...] = (),
+) -> tuple[Skill, ...]:
+    """Policy entries first, then local dirs and remote names not yet listed (off)."""
     by_name = {skill.name: skill for skill in policy.skills}
     ordered = [skill.name for skill in policy.skills]
-    for name in discover_names(project_root):
+    for name in (*discover_names(project_root), *extra_names):
         if name in by_name:
             continue
         ordered.append(name)

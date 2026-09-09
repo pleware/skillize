@@ -85,12 +85,26 @@ path other than the current working directory.
 
 Interactive checkbox UI ([Textual](https://textual.textualize.io), MIT).
 Space toggles a skill, `e` edits `when`, `s` writes `skillize.yaml`, `q`
-quits. Skills come from `skillize.yaml` plus `.agents/skills/*/SKILL.md`.
+quits.
+
+At start, configure lists `SKILL.md` names from GitHub packs in `sources:`
+(or, if that key is omitted, unique `source` repos in `skills-lock.json`),
+then merges them with local `.agents/skills/*/SKILL.md`. Enabling a row
+does not clone the pack — that is still agentize `mount` / a later fetch
+slice. `SKILLIZE_OFFLINE=1` uses `.skillize/catalogue.json`.
+
+```yaml
+sources:
+  - addyosmani/agent-skills
+  - vercel-labs/agent-skills
+```
 
 ```sh
 uv run skillize configure
 # or just:
 uv run skillize
+# list packs without the TUI:
+uv run skillize refresh
 ```
 
 Needs a real terminal. CI and pipes should call `skillize check`.

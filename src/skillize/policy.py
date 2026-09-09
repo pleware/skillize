@@ -32,6 +32,8 @@ class Policy:
     path: Path
     version: int
     skills: tuple[Skill, ...]
+    sources: tuple[str, ...] = ()
+    sources_declared: bool = False
 
     def enabled_names(self) -> tuple[str, ...]:
         return tuple(skill.name for skill in self.skills if skill.enabled)
@@ -80,7 +82,15 @@ def load_policy(project_root: Path) -> Policy:
         Skill(name=name, enabled=bool(body["enabled"]), when=_optional_when(body.get("when")))
         for name, body in (raw.get("skills") or {}).items()
     )
-    return Policy(path=path, version=int(raw["version"]), skills=skills)
+    sources_declared = "sources" in raw
+    sources = tuple(str(item) for item in (raw.get("sources") or ()))
+    return Policy(
+        path=path,
+        version=int(raw["version"]),
+        skills=skills,
+        sources=sources,
+        sources_declared=sources_declared,
+    )
 
 
 def load_policy_or_empty(project_root: Path) -> Policy:
@@ -97,11 +107,14 @@ def policy_to_mapping(policy: Policy) -> dict[str, Any]:
         if skill.when:
             body["when"] = skill.when
         skills[skill.name] = body
-    return {
+    mapping: dict[str, Any] = {
         "$schema": SCHEMA_URL,
         "version": SUPPORTED_VERSION,
         "skills": skills,
     }
+    if policy.sources_declared or policy.sources:
+        mapping["sources"] = list(policy.sources)
+    return mapping
 
 
 def save_policy(policy: Policy) -> None:

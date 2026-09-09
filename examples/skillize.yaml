@@ -2,6 +2,11 @@
 $schema: https://raw.githubusercontent.com/pleware/skillize/main/schema/v1.json
 version: 1
 
+# Optional. If omitted, unique GitHub `source` values in skills-lock.json
+# are listed when configure starts.
+sources:
+  - addyosmani/agent-skills
+
 skills:
   api-and-interface-design:
     enabled: true

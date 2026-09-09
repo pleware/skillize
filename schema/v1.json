@@ -16,6 +16,17 @@
       "const": 1,
       "description": "Schema generation. Integer 1 only; do not write 1.0."
     },
+    "sources": {
+      "type": "array",
+      "description": "GitHub owner/repo packs to list at configure start. If omitted, unique `source` values from skills-lock.json are used.",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+        "minLength": 3,
+        "maxLength": 200
+      },
+      "uniqueItems": true
+    },
     "skills": {
       "type": "object",
       "description": "Map of skill directory names (the folder under .agents/skills that contains SKILL.md). An empty object enables nothing. Unknown names are a load error once a checker exists.",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from textual import on
@@ -14,6 +15,8 @@ from textual.widgets.selection_list import Selection
 
 from .catalogue import compose_skills
 from .policy import Policy, Skill, load_policy_or_empty, save_policy
+from .sources import refresh_catalogue
+from .store_tree import ensure_data_dir
 
 
 class WhenScreen(ModalScreen[str | None]):
@@ -101,11 +104,11 @@ class ConfigureApp(App[None]):
         Binding("q", "quit", "Quit"),
     ]
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, policy: Policy, skills: tuple[Skill, ...]) -> None:
         super().__init__()
         self._root = root
-        policy = load_policy_or_empty(root)
-        skills = compose_skills(root, policy)
+        self._policy = policy
+        self._keep = {skill.name for skill in policy.skills}
         self._path = policy.path
         self._when = {skill.name: skill.when for skill in skills}
         self._initial = _snapshot(skills)
@@ -199,9 +202,22 @@ class ConfigureApp(App[None]):
     def action_save(self) -> None:
         if not self._skills:
             return
-        policy = Policy(path=self._path, version=1, skills=self._current_skills())
+        current = self._current_skills()
+        kept = tuple(
+            skill
+            for skill in current
+            if skill.enabled or skill.when or skill.name in self._keep
+        )
+        policy = Policy(
+            path=self._path,
+            version=1,
+            skills=kept,
+            sources=self._policy.sources,
+            sources_declared=self._policy.sources_declared,
+        )
         save_policy(policy)
-        self._initial = _snapshot(policy.skills)
+        self._keep = {skill.name for skill in kept}
+        self._initial = _snapshot(current)
         self._refresh_status()
         self.notify(f"Wrote {self._path.name}")
 
@@ -211,5 +227,10 @@ def _snapshot(skills: tuple[Skill, ...]) -> tuple[tuple[str, bool, str | None], 
 
 
 def run_configure(root: Path) -> int:
-    ConfigureApp(root).run()
+    ensure_data_dir(root)
+    policy = load_policy_or_empty(root)
+    extra, note = refresh_catalogue(root, policy)
+    print(f"skillize: {note}", file=sys.stderr)
+    skills = compose_skills(root, policy, extra_names=extra)
+    ConfigureApp(root, policy, skills).run()
     return 0

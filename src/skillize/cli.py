@@ -8,7 +8,8 @@ from pathlib import Path
 
 from . import __version__
 from .errors import SkillizeError
-from .policy import load_policy
+from .policy import load_policy, load_policy_or_empty
+from .sources import refresh_catalogue
 from .store_tree import CONFIG_NAME, config_is_ignored, config_path, ensure_data_dir
 from .tui import run_configure
 from .wrapper import UNIX_NAME, write_wrappers
@@ -31,6 +32,7 @@ def build_parser() -> argparse.ArgumentParser:
     subcommands = parser.add_subparsers(dest="command")
     subcommands.add_parser("check", help=f"validate {CONFIG_NAME} against schema v1")
     subcommands.add_parser("configure", help=f"checkbox TUI for {CONFIG_NAME}")
+    subcommands.add_parser("refresh", help="list GitHub packs into the configure catalogue")
     subcommands.add_parser("init", help=f"plant launchers next to {CONFIG_NAME}")
     return parser
 
@@ -73,6 +75,16 @@ def cmd_init(root: Path) -> int:
     return 0
 
 
+def cmd_refresh(root: Path) -> int:
+    ensure_data_dir(root)
+    policy = load_policy_or_empty(root)
+    names, note = refresh_catalogue(root, policy)
+    print(f"skillize: {note}")
+    for name in names:
+        print(f"skillize: {name}")
+    return 0
+
+
 def cmd_configure(root: Path) -> int:
     if not sys.stdin.isatty():
         print("skillize: configure needs a terminal; use `skillize check`", file=sys.stderr)
@@ -92,6 +104,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_configure(root)
         if command == "init":
             return cmd_init(root)
+        if command == "refresh":
+            return cmd_refresh(root)
     except SkillizeError as exc:
         print(f"skillize: {exc}", file=sys.stderr)
         return 1

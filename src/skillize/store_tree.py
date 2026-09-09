@@ -14,6 +14,7 @@ CONFIG_NAME = "skillize.yaml"
 DIR_NAME = ".skillize"
 SCHEMA_NAME = "v1.json"
 GITIGNORE_NAME = ".gitignore"
+CATALOGUE_NAME = "catalogue.json"
 
 GITIGNORE = """\
 # Managed by skillize. Runtime data only — nothing here belongs in git.
@@ -37,6 +38,10 @@ def ensure_data_dir(project_root: Path) -> Path:
     if not ignore_file.is_file() or ignore_file.read_text(encoding="utf-8") != GITIGNORE:
         ignore_file.write_text(GITIGNORE, encoding="utf-8", newline="\n")
     return directory
+
+
+def catalogue_path(project_root: Path) -> Path:
+    return data_dir(project_root) / CATALOGUE_NAME
 
 
 def config_is_ignored(project_root: Path) -> bool:
