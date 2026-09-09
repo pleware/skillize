@@ -11,8 +11,9 @@ install a toolchain ([ignite](https://github.com/pleware/ignite)).
 
 Python 3.11+ on Windows, macOS, and Linux — the same runtime as agentize.
 
-Status: first version — schema v1, `skillize check`, a Textual checkbox
-TUI (`skillize configure`), and trampoline launchers (`skillize init`).
+Status: first version — schema v1, `skillize check`, a Textual TUI
+(`skillize configure`: browse, search, install, then enable), trampoline
+launchers (`skillize init`), and `skillize install <name>`.
 
 ## Consumer layout
 
@@ -83,15 +84,17 @@ path other than the current working directory.
 
 ## Configure
 
-Interactive checkbox UI ([Textual](https://textual.textualize.io), MIT).
-Space toggles a skill, `e` edits `when`, `s` writes `skillize.yaml`, `q`
+Interactive UI ([Textual](https://textual.textualize.io), MIT). The first
+screen **browses** `SKILL.md` names from GitHub packs in `sources:` (or,
+if that key is omitted, unique `source` repos in `skills-lock.json`).
+Type to filter by name, repo, or path. `i` / Enter copies the highlighted
+skill into `.agents/skills/<name>/` and upserts `skills-lock.json`. `c`
+opens the enable/when checkboxes. Space toggles a skill, `e` edits
+`when`, `s` writes `skillize.yaml`, `b` / Escape returns to browse, `q`
 quits.
 
-At start, configure lists `SKILL.md` names from GitHub packs in `sources:`
-(or, if that key is omitted, unique `source` repos in `skills-lock.json`),
-then merges them with local `.agents/skills/*/SKILL.md`. Enabling a row
-does not clone the pack — that is still agentize `mount` / a later fetch
-slice. `SKILLIZE_OFFLINE=1` uses `.skillize/catalogue.json`.
+`SKILLIZE_OFFLINE=1` uses `.skillize/catalogue.json`. The kit does not
+write `.cursor/`. Host mount remains agentize.
 
 ```yaml
 sources:
@@ -105,6 +108,8 @@ uv run skillize configure
 uv run skillize
 # list packs without the TUI:
 uv run skillize refresh
+# copy one skill without the TUI:
+uv run skillize install planning-and-task-breakdown
 ```
 
 Needs a real terminal. CI and pipes should call `skillize check`.

@@ -26,3 +26,14 @@ def test_configure_requires_a_terminal(tmp_path: Path, monkeypatch, capsys) -> N
     assert main(["-C", str(tmp_path), "configure"]) == 2
     err = capsys.readouterr().err
     assert "needs a terminal" in err
+
+
+def test_install_missing_name(tmp_path: Path, monkeypatch, capsys) -> None:
+    monkeypatch.setenv("SKILLIZE_OFFLINE", "1")
+    (tmp_path / "skillize.yaml").write_text(
+        "version: 1\nsources:\n  - addyosmani/agent-skills\nskills: {}\n",
+        encoding="utf-8",
+    )
+    assert main(["-C", str(tmp_path), "install", "no-such-skill"]) == 1
+    err = capsys.readouterr().err
+    assert "no skill named no-such-skill" in err

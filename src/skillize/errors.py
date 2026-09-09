@@ -9,3 +9,7 @@ class SkillizeError(Exception):
 
 class PolicyError(SkillizeError):
     """skillize.yaml is missing, unreadable, or does not match schema v1."""
+
+
+class InstallError(SkillizeError):
+    """A GitHub skill could not be copied onto disk."""

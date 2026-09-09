@@ -10,6 +10,14 @@ SKILLS_DIR = Path(".agents") / "skills"
 SKILL_FILE = "SKILL.md"
 
 
+def skill_dir(project_root: Path, name: str) -> Path:
+    return project_root / SKILLS_DIR / name
+
+
+def skill_is_installed(project_root: Path, name: str) -> bool:
+    return (skill_dir(project_root, name) / SKILL_FILE).is_file()
+
+
 def discover_names(project_root: Path) -> tuple[str, ...]:
     base = project_root / SKILLS_DIR
     if not base.is_dir():

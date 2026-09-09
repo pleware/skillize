@@ -8,6 +8,7 @@ from pathlib import Path
 
 from . import __version__
 from .errors import SkillizeError
+from .install import install_skill
 from .policy import load_policy, load_policy_or_empty
 from .sources import refresh_catalogue
 from .store_tree import CONFIG_NAME, config_is_ignored, config_path, ensure_data_dir
@@ -31,8 +32,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subcommands = parser.add_subparsers(dest="command")
     subcommands.add_parser("check", help=f"validate {CONFIG_NAME} against schema v1")
-    subcommands.add_parser("configure", help=f"checkbox TUI for {CONFIG_NAME}")
+    subcommands.add_parser("configure", help="browse packs, install skills, then enable them")
     subcommands.add_parser("refresh", help="list GitHub packs into the configure catalogue")
+    install = subcommands.add_parser("install", help="copy a GitHub skill into .agents/skills")
+    install.add_argument("name", help="skill directory name (as listed by refresh)")
     subcommands.add_parser("init", help=f"plant launchers next to {CONFIG_NAME}")
     return parser
 
@@ -78,10 +81,29 @@ def cmd_init(root: Path) -> int:
 def cmd_refresh(root: Path) -> int:
     ensure_data_dir(root)
     policy = load_policy_or_empty(root)
-    names, note = refresh_catalogue(root, policy)
+    entries, note = refresh_catalogue(root, policy)
     print(f"skillize: {note}")
-    for name in names:
-        print(f"skillize: {name}")
+    for entry in entries:
+        print(f"skillize: {entry.name}  {entry.repo}")
+    return 0
+
+
+def cmd_install(root: Path, name: str) -> int:
+    ensure_data_dir(root)
+    policy = load_policy_or_empty(root)
+    entries, note = refresh_catalogue(root, policy)
+    print(f"skillize: {note}", file=sys.stderr)
+    matches = [entry for entry in entries if entry.name == name]
+    if not matches:
+        print(f"skillize: no skill named {name} in the catalogue", file=sys.stderr)
+        return 1
+    if len(matches) > 1:
+        print(
+            f"skillize: {len(matches)} matches; using {matches[0].repo}",
+            file=sys.stderr,
+        )
+    dest = install_skill(root, matches[0])
+    print(f"skillize: installed {name} → {dest}")
     return 0
 
 
@@ -106,6 +128,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_init(root)
         if command == "refresh":
             return cmd_refresh(root)
+        if command == "install":
+            return cmd_install(root, args.name)
     except SkillizeError as exc:
         print(f"skillize: {exc}", file=sys.stderr)
         return 1

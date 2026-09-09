@@ -6,7 +6,10 @@ from pathlib import Path
 from skillize.catalogue import compose_skills
 from skillize.policy import Policy, Skill, load_policy, save_policy
 from skillize.sources import (
+    RemoteSkill,
+    entries_from_tree_paths,
     fetch_repo_skills,
+    filter_entries,
     names_from_tree_paths,
     refresh_catalogue,
     sources_from_lock,
@@ -25,6 +28,41 @@ def test_names_from_skill_markdown_paths() -> None:
         ]
     )
     assert names == ("api-and-interface-design", "use-modern-go")
+
+
+def test_entries_keep_repo_and_skill_path() -> None:
+    entries = entries_from_tree_paths(
+        "addyosmani/agent-skills",
+        ["skills/code-review-and-quality/SKILL.md", "README.md"],
+        branch="main",
+    )
+    assert entries == (
+        RemoteSkill(
+            name="code-review-and-quality",
+            repo="addyosmani/agent-skills",
+            skill_path="skills/code-review-and-quality/SKILL.md",
+            branch="main",
+        ),
+    )
+
+
+def test_filter_entries_matches_name_repo_and_path() -> None:
+    entries = (
+        RemoteSkill(
+            "planning-and-task-breakdown",
+            "addyosmani/agent-skills",
+            "skills/planning-and-task-breakdown/SKILL.md",
+        ),
+        RemoteSkill(
+            "frontend-design",
+            "anthropics/skills",
+            "skills/frontend-design/SKILL.md",
+        ),
+    )
+    assert filter_entries(entries, "FRONT") == (entries[1],)
+    assert filter_entries(entries, "addyosmani") == (entries[0],)
+    assert filter_entries(entries, "skills/frontend") == (entries[1],)
+    assert filter_entries(entries, "") == entries
 
 
 def test_sources_from_lock_are_unique_and_ordered(tmp_path: Path) -> None:
@@ -103,12 +141,24 @@ def test_refresh_uses_injected_fetch_and_writes_cache(tmp_path: Path) -> None:
         return ("incremental-implementation", "planning-and-task-breakdown")
 
     names, note = refresh_catalogue(tmp_path, policy, fetch=fake_fetch)
-    assert names == ("incremental-implementation", "planning-and-task-breakdown")
-    assert "2 skills" in note
-    cache = json.loads((tmp_path / ".skillize" / "catalogue.json").read_text(encoding="utf-8"))
-    assert cache["repos"]["addyosmani/agent-skills"] == [
+    assert tuple(entry.name for entry in names) == (
         "incremental-implementation",
         "planning-and-task-breakdown",
+    )
+    assert "2 skills" in note
+    cache = json.loads((tmp_path / ".skillize" / "catalogue.json").read_text(encoding="utf-8"))
+    assert cache["version"] == 2
+    assert cache["repos"]["addyosmani/agent-skills"] == [
+        {
+            "name": "incremental-implementation",
+            "skill_path": "skills/incremental-implementation/SKILL.md",
+            "branch": "main",
+        },
+        {
+            "name": "planning-and-task-breakdown",
+            "skill_path": "skills/planning-and-task-breakdown/SKILL.md",
+            "branch": "main",
+        },
     ]
 
 
@@ -131,7 +181,7 @@ def test_refresh_offline_reads_cache(tmp_path: Path, monkeypatch) -> None:
         raise AssertionError("must not hit the network offline")
 
     names, note = refresh_catalogue(tmp_path, policy, fetch=boom)
-    assert names == ("git-workflow-and-versioning",)
+    assert tuple(entry.name for entry in names) == ("git-workflow-and-versioning",)
     assert "offline" in note
 
 

@@ -6,6 +6,7 @@ import json
 import os
 import re
 from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -20,24 +21,66 @@ API = "https://api.github.com"
 USER_AGENT = "pleware-skillize (https://github.com/pleware/skillize)"
 SKILL_NAME = re.compile(r"^[a-z][a-z0-9._-]*$")
 REPO_NAME = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+CACHE_VERSION = 2
 
 JsonGet = Callable[[str], Any]
+BytesGet = Callable[[str], bytes]
+RepoFetch = Callable[[str], tuple["RemoteSkill", ...] | tuple[str, ...]]
 
 
 class CatalogueError(SkillizeError):
     """A GitHub pack could not be listed. Configure still opens on cache or disk."""
 
 
+@dataclass(frozen=True)
+class RemoteSkill:
+    name: str
+    repo: str
+    skill_path: str
+    branch: str = "main"
+
+
 def names_from_tree_paths(paths: Iterable[str]) -> tuple[str, ...]:
-    found: set[str] = set()
+    return tuple(entry.name for entry in entries_from_tree_paths("owner/repo", paths))
+
+
+def entries_from_tree_paths(
+    repo: str,
+    paths: Iterable[str],
+    branch: str = "main",
+) -> tuple[RemoteSkill, ...]:
+    found: dict[str, RemoteSkill] = {}
     for raw in paths:
         path = raw.replace("\\", "/").strip("/")
         if Path(path).name != "SKILL.md":
             continue
         parent = Path(path).parent.name
-        if parent and SKILL_NAME.fullmatch(parent):
-            found.add(parent)
-    return tuple(sorted(found))
+        if parent and SKILL_NAME.fullmatch(parent) and parent not in found:
+            found[parent] = RemoteSkill(
+                name=parent,
+                repo=repo,
+                skill_path=path,
+                branch=branch,
+            )
+    return tuple(sorted(found.values(), key=lambda entry: entry.name))
+
+
+def names_of(entries: Iterable[RemoteSkill]) -> tuple[str, ...]:
+    return tuple(sorted({entry.name for entry in entries}))
+
+
+def filter_entries(entries: Iterable[RemoteSkill], query: str) -> tuple[RemoteSkill, ...]:
+    needle = query.strip().lower()
+    ordered = tuple(entries)
+    if not needle:
+        return ordered
+    return tuple(
+        entry
+        for entry in ordered
+        if needle in entry.name.lower()
+        or needle in entry.repo.lower()
+        or needle in entry.skill_path.lower()
+    )
 
 
 def github_get_json(url: str) -> Any:
@@ -52,24 +95,41 @@ def github_get_json(url: str) -> Any:
         return json.loads(response.read().decode("utf-8"))
 
 
-def fetch_repo_skills(repo: str, *, get_json: JsonGet = github_get_json) -> tuple[str, ...]:
+def github_get_bytes(url: str) -> bytes:
+    request = Request(url, headers={"User-Agent": USER_AGENT})
+    with urlopen(request, timeout=20) as response:
+        return response.read()
+
+
+def fetch_repo_entries(
+    repo: str, *, get_json: JsonGet = github_get_json
+) -> tuple[RemoteSkill, ...]:
     if not REPO_NAME.fullmatch(repo):
         raise CatalogueError(f"not a GitHub owner/repo: {repo}")
     meta = get_json(f"{API}/repos/{repo}")
     branch = meta.get("default_branch") or "main"
     tree = get_json(f"{API}/repos/{repo}/git/trees/{branch}?recursive=1")
     blobs = [item["path"] for item in tree.get("tree", []) if item.get("type") == "blob"]
-    names = names_from_tree_paths(blobs)
-    if tree.get("truncated") and not names:
+    entries = entries_from_tree_paths(repo, blobs, branch)
+    if tree.get("truncated") and not entries:
         listing = get_json(f"{API}/repos/{repo}/contents/skills")
         if isinstance(listing, list):
             extra = [
-                item["name"]
+                RemoteSkill(
+                    name=item["name"],
+                    repo=repo,
+                    skill_path=f"skills/{item['name']}/SKILL.md",
+                    branch=branch,
+                )
                 for item in listing
                 if item.get("type") == "dir" and SKILL_NAME.fullmatch(item.get("name", ""))
             ]
-            names = tuple(sorted(set(extra)))
-    return names
+            entries = tuple(sorted(extra, key=lambda entry: entry.name))
+    return entries
+
+
+def fetch_repo_skills(repo: str, *, get_json: JsonGet = github_get_json) -> tuple[str, ...]:
+    return tuple(entry.name for entry in fetch_repo_entries(repo, get_json=get_json))
 
 
 def sources_from_lock(project_root: Path) -> tuple[str, ...]:
@@ -101,7 +161,26 @@ def sources_to_fetch(project_root: Path, policy: Policy) -> tuple[str, ...]:
     return sources_from_lock(project_root)
 
 
-def _read_cache(project_root: Path) -> dict[str, list[str]]:
+def _entry_from_cache(repo: str, item: Any) -> RemoteSkill | None:
+    if isinstance(item, str):
+        if SKILL_NAME.fullmatch(item):
+            return RemoteSkill(name=item, repo=repo, skill_path=f"skills/{item}/SKILL.md")
+        return None
+    if not isinstance(item, dict):
+        return None
+    name = item.get("name")
+    if not isinstance(name, str) or not SKILL_NAME.fullmatch(name):
+        return None
+    skill_path = item.get("skill_path")
+    if not isinstance(skill_path, str) or not skill_path:
+        skill_path = f"skills/{name}/SKILL.md"
+    branch = item.get("branch")
+    if not isinstance(branch, str) or not branch:
+        branch = "main"
+    return RemoteSkill(name=name, repo=repo, skill_path=skill_path, branch=branch)
+
+
+def _read_cache(project_root: Path) -> dict[str, list[RemoteSkill]]:
     path = catalogue_path(project_root)
     if not path.is_file():
         return {}
@@ -112,16 +191,28 @@ def _read_cache(project_root: Path) -> dict[str, list[str]]:
     repos = raw.get("repos")
     if not isinstance(repos, dict):
         return {}
-    out: dict[str, list[str]] = {}
-    for repo, names in repos.items():
-        if isinstance(repo, str) and isinstance(names, list):
-            out[repo] = [str(name) for name in names]
+    out: dict[str, list[RemoteSkill]] = {}
+    for repo, items in repos.items():
+        if not isinstance(repo, str) or not isinstance(items, list):
+            continue
+        entries = [entry for item in items if (entry := _entry_from_cache(repo, item)) is not None]
+        if entries:
+            out[repo] = entries
     return out
 
 
-def _write_cache(project_root: Path, repos: dict[str, tuple[str, ...]]) -> None:
+def _write_cache(project_root: Path, repos: dict[str, tuple[RemoteSkill, ...]]) -> None:
     ensure_data_dir(project_root)
-    payload = {"repos": {repo: list(names) for repo, names in sorted(repos.items())}}
+    payload = {
+        "version": CACHE_VERSION,
+        "repos": {
+            repo: [
+                {"name": entry.name, "skill_path": entry.skill_path, "branch": entry.branch}
+                for entry in entries
+            ]
+            for repo, entries in sorted(repos.items())
+        },
+    }
     catalogue_path(project_root).write_text(
         json.dumps(payload, indent=2) + "\n",
         encoding="utf-8",
@@ -133,27 +224,46 @@ def _offline() -> bool:
     return bool(os.environ.get("SKILLIZE_OFFLINE"))
 
 
+def _coerce_entries(
+    repo: str, payload: tuple[RemoteSkill, ...] | tuple[str, ...]
+) -> tuple[RemoteSkill, ...]:
+    if not payload:
+        return ()
+    first = payload[0]
+    if isinstance(first, RemoteSkill):
+        return payload
+    return tuple(
+        RemoteSkill(name=name, repo=repo, skill_path=f"skills/{name}/SKILL.md") for name in payload
+    )
+
+
+def _sorted_entries(groups: Iterable[Iterable[RemoteSkill]]) -> tuple[RemoteSkill, ...]:
+    return tuple(
+        sorted((entry for group in groups for entry in group), key=lambda e: (e.name, e.repo))
+    )
+
+
 def refresh_catalogue(
     project_root: Path,
     policy: Policy,
     *,
-    fetch: Callable[[str], tuple[str, ...]] = fetch_repo_skills,
-) -> tuple[tuple[str, ...], str]:
-    """Return remote skill names and a one-line status for the user."""
+    fetch: RepoFetch = fetch_repo_entries,
+) -> tuple[tuple[RemoteSkill, ...], str]:
+    """Return remote skill rows and a one-line status for the user."""
     repos = sources_to_fetch(project_root, policy)
     if not repos:
         return (), "no GitHub sources in skillize.yaml or skills-lock.json"
 
     cached = _read_cache(project_root)
     if _offline():
-        names = tuple(sorted({name for repo in repos for name in cached.get(repo, [])}))
-        return names, f"offline · {len(names)} cached from {len(repos)} repo(s)"
+        entries = _sorted_entries(cached.get(repo, []) for repo in repos)
+        return entries, f"offline · {len(entries)} cached from {len(repos)} repo(s)"
 
-    collected: dict[str, tuple[str, ...]] = {}
+    collected: dict[str, tuple[RemoteSkill, ...]] = {}
     errors: list[str] = []
     for repo in repos:
         try:
-            collected[repo] = fetch(repo)
+            collected[repo] = _coerce_entries(repo, fetch(repo))
         except (
             CatalogueError,
             HTTPError,
@@ -169,9 +279,9 @@ def refresh_catalogue(
 
     if collected:
         _write_cache(project_root, collected)
-    names = tuple(sorted({name for group in collected.values() for name in group}))
-    if errors and names:
-        return names, f"{len(names)} skills · {len(errors)} repo error(s)"
+    entries = _sorted_entries(collected.values())
+    if errors and entries:
+        return entries, f"{len(entries)} skills · {len(errors)} repo error(s)"
     if errors:
         return (), f"GitHub list failed ({errors[0]})"
-    return names, f"{len(names)} skills from {len(repos)} repo(s)"
+    return entries, f"{len(entries)} skills from {len(repos)} repo(s)"

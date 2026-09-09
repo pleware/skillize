@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from skillize.catalogue import compose_skills, discover_names
+from skillize.catalogue import compose_skills, discover_names, skill_is_installed
 from skillize.policy import Policy, Skill, load_policy, load_policy_or_empty, save_policy
 
 
@@ -12,6 +12,8 @@ def test_discover_skill_markdown(tmp_path: Path) -> None:
     (skill / "SKILL.md").write_text("# frontend-design\n", encoding="utf-8")
     (tmp_path / ".agents" / "skills" / "ignore-me").mkdir()
     assert discover_names(tmp_path) == ("frontend-design",)
+    assert skill_is_installed(tmp_path, "frontend-design") is True
+    assert skill_is_installed(tmp_path, "missing") is False
 
 
 def test_compose_adds_discovered_off(tmp_path: Path) -> None:

@@ -1,22 +1,69 @@
-"""Checkbox TUI for `skillize.yaml`. Textual is the renderer; policy stays ours."""
+"""Browse GitHub packs, then checkbox TUI for `skillize.yaml`."""
 
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
-from textual.screen import ModalScreen
-from textual.widgets import Button, Footer, Header, Label, SelectionList, Static, TextArea
+from textual.screen import ModalScreen, Screen
+from textual.widgets import (
+    Button,
+    Footer,
+    Header,
+    Input,
+    Label,
+    OptionList,
+    SelectionList,
+    Static,
+    TextArea,
+)
+from textual.widgets.option_list import Option
 from textual.widgets.selection_list import Selection
 
-from .catalogue import compose_skills
+from .catalogue import compose_skills, skill_is_installed
+from .errors import SkillizeError
+from .install import install_skill
 from .policy import Policy, Skill, load_policy_or_empty, save_policy
-from .sources import refresh_catalogue
+from .sources import RemoteSkill, filter_entries, names_of, refresh_catalogue
 from .store_tree import ensure_data_dir
+
+InstallFn = Callable[..., Path]
+
+CONFIGURE_CSS = """
+Screen {
+    background: $background;
+}
+
+SelectionList {
+    border: round $accent;
+    height: 1fr;
+    padding: 0 1;
+}
+
+#when {
+    height: 8;
+    border: round $panel;
+    padding: 0 1;
+    color: $text-muted;
+}
+
+#status {
+    height: 1;
+    color: $text-muted;
+    padding: 0 1;
+}
+"""
+
+CONFIGURE_BINDINGS = [
+    Binding("s", "save", "Save"),
+    Binding("e", "edit_when", "When"),
+    Binding("q", "quit", "Quit"),
+]
 
 
 class WhenScreen(ModalScreen[str | None]):
@@ -72,40 +119,10 @@ class WhenScreen(ModalScreen[str | None]):
         self.action_cancel()
 
 
-class ConfigureApp(App[None]):
-    TITLE = "skillize"
-    CSS = """
-    Screen {
-        background: $background;
-    }
+class ConfigureTools:
+    """Enable/when UI shared by the standalone app (tests) and the pushed screen."""
 
-    SelectionList {
-        border: round $accent;
-        height: 1fr;
-        padding: 0 1;
-    }
-
-    #when {
-        height: 8;
-        border: round $panel;
-        padding: 0 1;
-        color: $text-muted;
-    }
-
-    #status {
-        height: 1;
-        color: $text-muted;
-        padding: 0 1;
-    }
-    """
-    BINDINGS = [
-        Binding("s", "save", "Save"),
-        Binding("e", "edit_when", "When"),
-        Binding("q", "quit", "Quit"),
-    ]
-
-    def __init__(self, root: Path, policy: Policy, skills: tuple[Skill, ...]) -> None:
-        super().__init__()
+    def configure_init(self, root: Path, policy: Policy, skills: tuple[Skill, ...]) -> None:
         self._root = root
         self._policy = policy
         self._keep = {skill.name for skill in policy.skills}
@@ -113,7 +130,6 @@ class ConfigureApp(App[None]):
         self._when = {skill.name: skill.when for skill in skills}
         self._initial = _snapshot(skills)
         self._skills = skills
-        self.sub_title = str(root)
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -222,6 +238,187 @@ class ConfigureApp(App[None]):
         self.notify(f"Wrote {self._path.name}")
 
 
+class ConfigureApp(ConfigureTools, App[None]):
+    TITLE = "skillize"
+    CSS = CONFIGURE_CSS
+    BINDINGS = CONFIGURE_BINDINGS
+
+    def __init__(self, root: Path, policy: Policy, skills: tuple[Skill, ...]) -> None:
+        super().__init__()
+        self.configure_init(root, policy, skills)
+        self.sub_title = str(root)
+
+
+class ConfigureScreen(ConfigureTools, Screen[None]):
+    CSS = CONFIGURE_CSS
+    BINDINGS = [
+        *CONFIGURE_BINDINGS,
+        Binding("escape", "close_configure", "Browse", show=True),
+        Binding("b", "close_configure", "Browse"),
+    ]
+
+    def __init__(self, root: Path, policy: Policy, skills: tuple[Skill, ...]) -> None:
+        super().__init__()
+        self.configure_init(root, policy, skills)
+
+    def action_close_configure(self) -> None:
+        self.dismiss()
+
+    def action_quit(self) -> None:
+        self.app.exit()
+
+
+class SkillizeApp(App[None]):
+    TITLE = "skillize"
+    CSS = """
+    Screen {
+        background: $background;
+    }
+
+    Input {
+        margin: 0 1 1 1;
+        border: round $accent;
+    }
+
+    OptionList {
+        border: round $accent;
+        height: 1fr;
+        padding: 0 1;
+    }
+
+    #hint {
+        height: 4;
+        color: $text-muted;
+        padding: 0 1;
+        border: round $panel;
+        margin: 0 1 1 1;
+    }
+    """
+    BINDINGS = [
+        Binding("slash", "focus_search", "Search"),
+        Binding("i", "install", "Install"),
+        Binding("c", "configure", "Enable"),
+        Binding("escape", "blur_search", "List", show=False),
+        Binding("q", "quit", "Quit"),
+    ]
+
+    def __init__(
+        self,
+        root: Path,
+        policy: Policy,
+        entries: tuple[RemoteSkill, ...],
+        note: str = "",
+        *,
+        install: InstallFn = install_skill,
+    ) -> None:
+        super().__init__()
+        self._root = root
+        self._policy = policy
+        self._entries = tuple(sorted(entries, key=lambda entry: (entry.name, entry.repo)))
+        self._note = note
+        self._install = install
+        self._visible: tuple[RemoteSkill, ...] = self._entries
+        self.sub_title = note or "browse"
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield Input(placeholder="Search skills and repos…", id="search")
+        yield OptionList(id="browse")
+        yield Static(id="hint")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        listing = self.query_one("#browse", OptionList)
+        listing.border_title = "Browse skills"
+        self._refresh_list()
+        self.query_one("#search", Input).focus()
+
+    def on_screen_resume(self) -> None:
+        self._policy = load_policy_or_empty(self._root)
+        self._refresh_list()
+
+    def _query(self) -> str:
+        return self.query_one("#search", Input).value
+
+    def _refresh_list(self) -> None:
+        listing = self.query_one("#browse", OptionList)
+        self._visible = filter_entries(self._entries, self._query())
+        listing.clear_options()
+        listing.add_options([Option(self._prompt(entry)) for entry in self._visible])
+        if self._visible:
+            listing.highlighted = 0
+        self._refresh_hint()
+
+    def _prompt(self, entry: RemoteSkill) -> str:
+        mark = "●" if skill_is_installed(self._root, entry.name) else " "
+        return f"{mark} {entry.name}  {entry.repo}"
+
+    def _highlighted_entry(self) -> RemoteSkill | None:
+        listing = self.query_one("#browse", OptionList)
+        index = listing.highlighted
+        if index is None or index < 0 or index >= len(self._visible):
+            return None
+        return self._visible[index]
+
+    def _refresh_hint(self) -> None:
+        panel = self.query_one("#hint", Static)
+        entry = self._highlighted_entry()
+        if entry is None:
+            if self._entries:
+                panel.update(f"{self._note}\nNo match. Type to filter, c for enable, q quit.")
+            else:
+                panel.update(
+                    f"{self._note or 'No GitHub packs listed.'}\n"
+                    "Add sources: in skillize.yaml, then refresh. c enable local skills, q quit."
+                )
+            return
+        mark = "on disk" if skill_is_installed(self._root, entry.name) else "not installed"
+        panel.update(
+            f"{entry.skill_path}  ·  {mark}\n"
+            f"{entry.repo}@{entry.branch}  ·  Enter / i install  ·  c enable"
+        )
+
+    @on(Input.Changed, "#search")
+    def on_search_changed(self) -> None:
+        self._refresh_list()
+
+    @on(Input.Submitted, "#search")
+    def on_search_submitted(self) -> None:
+        self.query_one("#browse", OptionList).focus()
+
+    @on(OptionList.OptionHighlighted, "#browse")
+    def on_browse_highlighted(self) -> None:
+        self._refresh_hint()
+
+    @on(OptionList.OptionSelected, "#browse")
+    def on_browse_selected(self) -> None:
+        self.action_install()
+
+    def action_focus_search(self) -> None:
+        self.query_one("#search", Input).focus()
+
+    def action_blur_search(self) -> None:
+        self.query_one("#browse", OptionList).focus()
+
+    def action_install(self) -> None:
+        entry = self._highlighted_entry()
+        if entry is None:
+            return
+        try:
+            dest = self._install(self._root, entry)
+        except SkillizeError as exc:
+            self.notify(str(exc), severity="error")
+            return
+        self.notify(f"Installed {entry.name} → {dest}")
+        self._refresh_list()
+
+    def action_configure(self) -> None:
+        policy = load_policy_or_empty(self._root)
+        extra = names_of(self._entries)
+        skills = compose_skills(self._root, policy, extra_names=extra)
+        self.push_screen(ConfigureScreen(self._root, policy, skills))
+
+
 def _snapshot(skills: tuple[Skill, ...]) -> tuple[tuple[str, bool, str | None], ...]:
     return tuple((skill.name, skill.enabled, skill.when) for skill in skills)
 
@@ -229,8 +426,7 @@ def _snapshot(skills: tuple[Skill, ...]) -> tuple[tuple[str, bool, str | None], 
 def run_configure(root: Path) -> int:
     ensure_data_dir(root)
     policy = load_policy_or_empty(root)
-    extra, note = refresh_catalogue(root, policy)
+    entries, note = refresh_catalogue(root, policy)
     print(f"skillize: {note}", file=sys.stderr)
-    skills = compose_skills(root, policy, extra_names=extra)
-    ConfigureApp(root, policy, skills).run()
+    SkillizeApp(root, policy, entries, note).run()
     return 0
