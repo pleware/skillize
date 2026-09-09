@@ -39,6 +39,64 @@ class Policy:
         return tuple(skill.name for skill in self.skills if skill.enabled)
 
 
+MUTEX_GROUPS = (("php7", "php8"),)
+
+
+def _upsert_skill(policy: Policy, skill: Skill) -> Policy:
+    rows = {item.name: item for item in policy.skills}
+    rows[skill.name] = skill
+    ordered: list[Skill] = []
+    seen: set[str] = set()
+    for item in policy.skills:
+        ordered.append(rows[item.name])
+        seen.add(item.name)
+    if skill.name not in seen:
+        ordered.append(skill)
+    return Policy(
+        path=policy.path,
+        version=policy.version,
+        skills=tuple(ordered),
+        sources=policy.sources,
+        sources_declared=policy.sources_declared,
+    )
+
+
+def with_skill_enabled(policy: Policy, name: str, enabled: bool) -> Policy:
+    """Return a copy with `name` on or off. php7 and php8 cannot both be on."""
+    previous = next((item for item in policy.skills if item.name == name), None)
+    updated = _upsert_skill(
+        policy,
+        Skill(name=name, enabled=enabled, when=previous.when if previous else None),
+    )
+    if not enabled:
+        return updated
+    for group in MUTEX_GROUPS:
+        if name not in group:
+            continue
+        for other in group:
+            if other == name:
+                continue
+            rival = next((item for item in updated.skills if item.name == other), None)
+            if rival is not None:
+                updated = _upsert_skill(
+                    updated, Skill(name=other, enabled=False, when=rival.when)
+                )
+    return updated
+
+
+def with_skill_when(policy: Policy, name: str, when: str | None) -> Policy:
+    """Return a copy with project `when` prose for `name`."""
+    previous = next((item for item in policy.skills if item.name == name), None)
+    return _upsert_skill(
+        policy,
+        Skill(
+            name=name,
+            enabled=previous.enabled if previous else False,
+            when=when,
+        ),
+    )
+
+
 def schema_bytes() -> bytes:
     packaged = files("skillize") / "data" / SCHEMA_RESOURCE
     try:

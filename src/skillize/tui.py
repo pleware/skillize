@@ -26,15 +26,20 @@ from textual.widgets import (
 from textual.widgets.option_list import Option
 from textual.widgets.selection_list import Selection
 
-from .catalogue import compose_skills
 from .errors import SkillizeError
 from .install import install_skill
-from .policy import Policy, Skill, load_policy_or_empty, save_policy
+from .policy import (
+    Policy,
+    Skill,
+    load_policy_or_empty,
+    save_policy,
+    with_skill_enabled,
+    with_skill_when,
+)
 from .sources import (
     LOCAL_REPO,
     RemoteSkill,
     filter_entries,
-    names_of,
     refresh_catalogue,
     skill_slug,
     split_catalogue,
@@ -43,21 +48,40 @@ from .store_tree import ensure_data_dir
 
 InstallFn = Callable[..., Path]
 
-CONFIGURE_CSS = """
+# Ink cabinet + brass live fuse. Not cream/terracotta, not acid-green terminal.
+INK = """
+$background: #16141a;
+$surface: #221f28;
+$primary: #d4a574;
+$secondary: #8a9e8f;
+$accent: #d4a574;
+$warning: #c45c4a;
+$error: #c45c4a;
+$success: #8a9e8f;
+$text: #ece6d8;
+$text-muted: #9a9284;
+"""
+
+CONFIGURE_CSS = (
+    INK
+    + """
 Screen {
     background: $background;
+    color: $text;
 }
 
 SelectionList {
-    border: round $accent;
+    border: tall $accent;
     height: 1fr;
     padding: 0 1;
+    margin: 0 1;
 }
 
 #when {
     height: 8;
-    border: round $panel;
+    border: tall $surface;
     padding: 0 1;
+    margin: 0 1 1 1;
     color: $text-muted;
 }
 
@@ -65,8 +89,10 @@ SelectionList {
     height: 1;
     color: $text-muted;
     padding: 0 1;
+    margin: 0 1;
 }
 """
+)
 
 CONFIGURE_BINDINGS = [
     Binding("s", "save", "Save"),
@@ -81,7 +107,9 @@ class WhenScreen(ModalScreen[str | None]):
         Binding("ctrl+s", "accept", "Save", show=True),
     ]
 
-    CSS = """
+    CSS = (
+        INK
+        + """
     WhenScreen {
         align: center middle;
     }
@@ -90,7 +118,7 @@ class WhenScreen(ModalScreen[str | None]):
         width: 72;
         height: 18;
         background: $surface;
-        border: round $accent;
+        border: tall $accent;
         padding: 1 2;
     }
 
@@ -99,6 +127,7 @@ class WhenScreen(ModalScreen[str | None]):
         margin: 1 0;
     }
     """
+    )
 
     def __init__(self, name: str, when: str | None) -> None:
         super().__init__()
@@ -107,7 +136,7 @@ class WhenScreen(ModalScreen[str | None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="when-dialog"):
-            yield Label(f"When to use  {self._name}")
+            yield Label(f"When to use {self._name}")
             yield TextArea(self._when, id="when-edit")
             yield Button("Save", id="ok", variant="primary")
             yield Button("Cancel", id="cancel")
@@ -164,7 +193,7 @@ class ConfigureTools:
         if not self._skills:
             return
         listing = self.query_one("#skills", SelectionList)
-        listing.border_title = "Skills"
+        listing.border_title = "On this tree"
         self._refresh_when()
         self._refresh_status()
 
@@ -189,9 +218,11 @@ class ConfigureTools:
         name = self._highlighted_name()
         if name is None:
             return
-        prose = self._when.get(name) or "No when text yet. Press e to add some."
+        prose = self._when.get(name) or (
+            "No when text yet. Press e to say when this skill should fire."
+        )
         panel = self.query_one("#when", Static)
-        panel.border_title = f"When · {name}"
+        panel.border_title = f"When for {name}"
         panel.update(prose)
 
     def _refresh_status(self) -> None:
@@ -280,30 +311,36 @@ class ConfigureScreen(ConfigureTools, Screen[None]):
         self.app.exit()
 
 
-CATALOGUE_CSS = """
+CATALOGUE_CSS = (
+    INK
+    + """
 Screen {
     background: $background;
+    color: $text;
 }
 
 Input {
     margin: 0 1 1 1;
-    border: round $accent;
+    border: tall $surface;
+    background: $surface;
 }
 
 OptionList {
-    border: round $accent;
+    border: tall $accent;
     height: 1fr;
     padding: 0 1;
+    margin: 0 1;
 }
 
 #hint {
-    height: 5;
+    height: 6;
     color: $text-muted;
     padding: 0 1;
-    border: round $panel;
+    border: tall $surface;
     margin: 0 1 1 1;
 }
 """
+)
 
 
 class CatalogueTools:
@@ -336,9 +373,9 @@ class CatalogueTools:
 
     def on_mount(self) -> None:
         listing = self.query_one("#browse", OptionList)
-        listing.border_title = "Installed" if self._want_installed else "Install New"
+        listing.border_title = "On this tree" if self._want_installed else "From packs"
         self._refresh_list()
-        self.query_one("#search", Input).focus()
+        listing.focus()
 
     def on_screen_resume(self) -> None:
         self._policy = load_policy_or_empty(self._root)
@@ -346,8 +383,8 @@ class CatalogueTools:
 
     def _search_placeholder(self) -> str:
         if self._want_installed:
-            return "Search installed skills…"
-        return "Search packs to install…"
+            return "Filter installed skills"
+        return "Filter packs"
 
     def _pool(self) -> tuple[RemoteSkill, ...]:
         installed, available = split_catalogue(self._root, self._entries)
@@ -356,19 +393,32 @@ class CatalogueTools:
     def _query(self) -> str:
         return self.query_one("#search", Input).value
 
-    def _refresh_list(self) -> None:
+    def _refresh_list(self, *, keep: str | None = None) -> None:
         listing = self.query_one("#browse", OptionList)
+        current = self._highlighted_entry()
+        retain = keep or (current.name if current is not None else None)
         self._visible = filter_entries(self._pool(), self._query())
         listing.clear_options()
         listing.add_options([Option(self._prompt(entry)) for entry in self._visible])
+        index = 0
+        if retain:
+            for offset, entry in enumerate(self._visible):
+                if entry.name == retain:
+                    index = offset
+                    break
         if self._visible:
-            listing.highlighted = 0
+            listing.highlighted = index
         self._refresh_hint()
 
+    def _skill_is_on(self, name: str) -> bool:
+        return any(skill.enabled and skill.name == name for skill in self._policy.skills)
+
     def _prompt(self, entry: RemoteSkill) -> str:
-        if entry.repo == LOCAL_REPO:
-            return entry.name
-        return skill_slug(entry)
+        slug = entry.name if entry.repo == LOCAL_REPO else skill_slug(entry)
+        if not self._want_installed:
+            return slug
+        mark = "on " if self._skill_is_on(entry.name) else "off"
+        return f"{mark}  {slug}"
 
     def _highlighted_entry(self) -> RemoteSkill | None:
         listing = self.query_one("#browse", OptionList)
@@ -381,24 +431,27 @@ class CatalogueTools:
         panel = self.query_one("#hint", Static)
         entry = self._highlighted_entry()
         if self._want_installed:
-            keys = "c enable  ·  b home  ·  q quit"
+            keys = "Space, Enter or c turns it on or off. e edits when. / search. b home."
         else:
-            keys = "Enter / i install  ·  b home  ·  q quit"
+            keys = "Enter or i copies it onto this tree. / search. b home."
         if entry is None:
             if self._pool() or self._query():
-                panel.update(f"{self._root}\n{self._note}\nNo match. {keys}")
+                panel.update(f"No match.\n{keys}")
             elif self._want_installed:
                 panel.update(
-                    f"{self._root}\n{self._note}\n"
-                    "Nothing on disk yet. b home, then Install New."
+                    "Nothing on disk yet.\nOpen From packs, install one, then come back."
                 )
             else:
                 panel.update(
-                    f"{self._root}\n{self._note or 'No GitHub packs listed.'}\n"
-                    "Add sources: in skillize.yaml. b home, q quit."
+                    f"{self._note or 'No packs listed.'}\n"
+                    "Add sources: in skillize.yaml if the catalogue is empty."
                 )
             return
-        panel.update(f"{self._root}\n{entry.skill_path}  ·  {keys}")
+        if self._want_installed:
+            state = "on" if self._skill_is_on(entry.name) else "off"
+            panel.update(f"{entry.name} is {state}.\n{keys}")
+            return
+        panel.update(f"{entry.skill_path}\n{keys}")
 
     # Named by Textual convention, not @on: a plain mixin is not a MessagePump
     # subclass, so decorated handlers declared here are never registered.
@@ -420,20 +473,17 @@ class CatalogueTools:
     def action_blur_search(self) -> None:
         self.query_one("#browse", OptionList).focus()
 
-    def action_configure(self) -> None:
-        policy = load_policy_or_empty(self._root)
-        extra = names_of(self._entries)
-        skills = compose_skills(self._root, policy, extra_names=extra)
-        self.app.push_screen(ConfigureScreen(self._root, policy, skills))
 
-
-HOME_CSS = """
+HOME_CSS = (
+    INK
+    + """
 Screen {
     background: $background;
+    color: $text;
 }
 
 OptionList {
-    border: round $accent;
+    border: tall $accent;
     height: auto;
     max-height: 1fr;
     padding: 1 1;
@@ -441,13 +491,14 @@ OptionList {
 }
 
 #hint {
-    height: 5;
+    height: 6;
     color: $text-muted;
     padding: 0 1;
-    border: round $panel;
+    border: tall $surface;
     margin: 0 1 1 1;
 }
 """
+)
 
 
 class SkillizeApp(App[None]):
@@ -503,7 +554,9 @@ class SkillizeApp(App[None]):
         )
         listing.highlighted = 0
         self.query_one("#hint", Static).update(
-            f"{self._root}\n{self._note}\nEnter opens  ·  q quit"
+            "Installed is what is already on this tree. "
+            "Install New copies a pack onto disk.\n"
+            "Enter opens. q quits."
         )
 
     def _open_choice(self, choice: str | None) -> None:
@@ -529,7 +582,9 @@ class InstalledScreen(CatalogueTools, Screen[None]):
     CSS = CATALOGUE_CSS
     BINDINGS = [
         Binding("slash", "focus_search", "Search"),
-        Binding("c", "configure", "Enable"),
+        Binding("space", "toggle_enabled", "On/off"),
+        Binding("c", "toggle_enabled", "On/off"),
+        Binding("e", "edit_when", "When"),
         Binding("escape", "close_list", "Home", show=True),
         Binding("b", "close_list", "Home"),
         Binding("q", "quit", "Quit"),
@@ -552,6 +607,39 @@ class InstalledScreen(CatalogueTools, Screen[None]):
 
     def action_quit(self) -> None:
         self.app.exit()
+
+    @on(OptionList.OptionSelected, "#browse")
+    def on_browse_selected(self) -> None:
+        self.action_toggle_enabled()
+
+    def action_toggle_enabled(self) -> None:
+        entry = self._highlighted_entry()
+        if entry is None:
+            return
+        turned_on = not self._skill_is_on(entry.name)
+        self._policy = with_skill_enabled(self._policy, entry.name, turned_on)
+        save_policy(self._policy)
+        self._refresh_list(keep=entry.name)
+        self.notify(f"{entry.name} {'on' if turned_on else 'off'}")
+
+    def action_edit_when(self) -> None:
+        entry = self._highlighted_entry()
+        if entry is None:
+            return
+        current = next(
+            (skill.when for skill in self._policy.skills if skill.name == entry.name),
+            None,
+        )
+
+        def apply(result: str | None) -> None:
+            if result is None:
+                return
+            self._policy = with_skill_when(self._policy, entry.name, result or None)
+            save_policy(self._policy)
+            self._refresh_hint()
+            self.notify(f"When saved for {entry.name}")
+
+        self.app.push_screen(WhenScreen(entry.name, current), apply)
 
 
 class InstallScreen(CatalogueTools, Screen[None]):
@@ -601,7 +689,7 @@ class InstallScreen(CatalogueTools, Screen[None]):
         listing.disabled = True
         search.disabled = True
         self.query_one("#hint", Static).update(
-            f"{self._root}\nInstalling {self._prompt(entry)}…\n"
+            f"Installing {self._prompt(entry)}…\n"
             "Fetching files. The list will update when it finishes."
         )
         self.run_worker(self._install_worker(entry), exclusive=True, group="install")

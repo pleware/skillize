@@ -89,11 +89,13 @@ screen is a menu: **Installed** (skills already in `.agents/skills/`) and
 **Install New** (remaining `SKILL.md` files from the kit's bundled
 `php7` skill, then GitHub packs — addyosmani, vercel-labs,
 obra/superpowers, AsyrafHussin, me-shaon — plus `sources:` and extra
-repos in `skills-lock.json`). Rows are
-`owner/repo/skill-name` (type to filter). `i` / Enter copies the
-highlighted skill onto disk and upserts `skills-lock.json`. `c` opens the
-enable/when checkboxes. Space toggles a skill, `e` edits `when`, `s`
-writes `skillize.yaml`, `b` / Escape returns to the menu, `q` quits.
+repos in `skills-lock.json`). Rows are `owner/repo/skill-name`.
+
+On **Installed**, Space / Enter / `c` turns the highlighted skill on or
+off and writes `skillize.yaml`. `e` edits `when`. php7 and php8 cannot
+both be on. On **Install New**, `i` / Enter copies the skill onto disk
+and upserts `skills-lock.json`. `/` searches, `b` / Escape returns home,
+`q` quits.
 
 `SKILLIZE_OFFLINE=1` uses `.skillize/catalogue.json`. The kit does not
 write `.cursor/`. Host mount remains agentize.

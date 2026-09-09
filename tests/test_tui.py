@@ -8,7 +8,7 @@ from textual.widgets import Input, OptionList, Static
 from skillize.catalogue import compose_skills
 from skillize.policy import Policy, load_policy, load_policy_or_empty
 from skillize.sources import RemoteSkill
-from skillize.tui import ConfigureApp, ConfigureScreen, InstalledScreen, InstallScreen, SkillizeApp
+from skillize.tui import ConfigureApp, InstalledScreen, InstallScreen, SkillizeApp
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples" / "skillize.yaml"
 
@@ -93,7 +93,7 @@ async def test_home_menu_opens_installed_and_install_new(tmp_path: Path) -> None
     assert (tmp_path / ".agents" / "skills" / "planning-and-task-breakdown" / "SKILL.md").is_file()
 
 
-async def test_installed_enable_opens_configure(tmp_path: Path) -> None:
+async def test_installed_toggle_enables_highlighted_skill(tmp_path: Path) -> None:
     already = tmp_path / ".agents" / "skills" / "php7"
     already.mkdir(parents=True)
     (already / "SKILL.md").write_text("# php7\n", encoding="utf-8")
@@ -108,10 +108,19 @@ async def test_installed_enable_opens_configure(tmp_path: Path) -> None:
         await pilot.press("enter")
         await pilot.pause()
         assert isinstance(app.screen, InstalledScreen)
-        await pilot.click("#browse")
+        listing = app.screen.query_one("#browse", OptionList)
+        assert listing.has_focus
+        assert str(listing.get_option_at_index(0).prompt).startswith("off")
         await pilot.press("c")
-        await pilot.pause()
-        assert isinstance(app.screen, ConfigureScreen)
+        await _wait_until(
+            pilot,
+            lambda: "php7" in load_policy(tmp_path).enabled_names(),
+        )
+        assert isinstance(app.screen, InstalledScreen)
+        assert str(listing.get_option_at_index(0).prompt).startswith("on")
+        await pilot.press("space")
+        await _wait_until(pilot, lambda: load_policy(tmp_path).enabled_names() == ())
+        assert str(listing.get_option_at_index(0).prompt).startswith("off")
 
 
 async def test_home_menu_counts_refresh_after_install(tmp_path: Path) -> None:
@@ -178,6 +187,10 @@ async def test_install_search_filters_the_list(tmp_path: Path) -> None:
         await pilot.pause()
         listing = screen.query_one("#browse", OptionList)
         assert listing.option_count == 3
+        assert listing.has_focus
+        await pilot.press("slash")
+        await pilot.pause()
+        assert screen.query_one("#search", Input).has_focus
         await pilot.press("p", "h", "p")
         await pilot.pause()
         assert screen.query_one("#search", Input).value == "php"

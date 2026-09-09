@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Toggle the highlighted Installed skill on or off in place (no second catalogue).
+- Focus the skill list on Installed and Install New, not the search box (`/` still searches).
 - Push Enable / When from the App so Installed and Install New no longer crash on `c` / `e`.
 - Show an Installing… message and keep the TUI alive while a skill downloads.
 - Re-count the home menu after a screen closes, so a fresh install shows up.
