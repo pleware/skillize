@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/pleware/skillize/main/schema/v1.json
+$schema: https://raw.githubusercontent.com/pleware/skillize/main/schema/v1.json
+version: 1
+
+skills:
+  api-and-interface-design:
+    enabled: true
+    when: >
+      Designing or changing a public HTTP or module contract.
+  frontend-design:
+    enabled: false

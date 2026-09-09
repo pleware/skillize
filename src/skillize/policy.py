@@ -1,0 +1,123 @@
+"""Load and validate `skillize.yaml` against schema v1."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from importlib.resources import files
+from pathlib import Path
+from typing import Any
+
+import yaml
+from jsonschema import Draft202012Validator
+from jsonschema.exceptions import ValidationError
+
+from .errors import PolicyError
+from .store_tree import config_path
+
+SUPPORTED_VERSION = 1
+SCHEMA_RESOURCE = "v1.json"
+SCHEMA_URL = "https://raw.githubusercontent.com/pleware/skillize/main/schema/v1.json"
+
+
+@dataclass(frozen=True)
+class Skill:
+    name: str
+    enabled: bool
+    when: str | None = None
+
+
+@dataclass(frozen=True)
+class Policy:
+    path: Path
+    version: int
+    skills: tuple[Skill, ...]
+
+    def enabled_names(self) -> tuple[str, ...]:
+        return tuple(skill.name for skill in self.skills if skill.enabled)
+
+
+def schema_bytes() -> bytes:
+    packaged = files("skillize") / "data" / SCHEMA_RESOURCE
+    try:
+        return packaged.read_bytes()
+    except (FileNotFoundError, ModuleNotFoundError, OSError):
+        fallback = Path(__file__).resolve().parents[2] / "schema" / "v1.json"
+        if fallback.is_file():
+            return fallback.read_bytes()
+        raise PolicyError("schema v1 is missing from the skillize install") from None
+
+
+def schema_document() -> dict[str, Any]:
+    return json.loads(schema_bytes().decode("utf-8"))
+
+
+def load_policy(project_root: Path) -> Policy:
+    path = config_path(project_root)
+    if not path.is_file():
+        raise PolicyError(f"no {path.name} at {path}")
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise PolicyError(f"cannot read {path}: {exc}") from exc
+    try:
+        raw = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise PolicyError(f"{path}: invalid YAML: {exc}") from exc
+    if raw is None:
+        raise PolicyError(f"{path}: file is empty")
+    if not isinstance(raw, dict):
+        raise PolicyError(f"{path}: root must be a mapping")
+    version = raw.get("version")
+    if isinstance(version, float):
+        raise PolicyError(f"{path}: version must be integer {SUPPORTED_VERSION}, not {version!r}")
+    try:
+        Draft202012Validator(schema_document()).validate(raw)
+    except ValidationError as exc:
+        where = ".".join(str(part) for part in exc.absolute_path) or "root"
+        raise PolicyError(f"{path}: {where}: {exc.message}") from exc
+    skills = tuple(
+        Skill(name=name, enabled=bool(body["enabled"]), when=_optional_when(body.get("when")))
+        for name, body in (raw.get("skills") or {}).items()
+    )
+    return Policy(path=path, version=int(raw["version"]), skills=skills)
+
+
+def load_policy_or_empty(project_root: Path) -> Policy:
+    path = config_path(project_root)
+    if not path.is_file():
+        return Policy(path=path, version=SUPPORTED_VERSION, skills=())
+    return load_policy(project_root)
+
+
+def policy_to_mapping(policy: Policy) -> dict[str, Any]:
+    skills: dict[str, Any] = {}
+    for skill in policy.skills:
+        body: dict[str, Any] = {"enabled": skill.enabled}
+        if skill.when:
+            body["when"] = skill.when
+        skills[skill.name] = body
+    return {
+        "$schema": SCHEMA_URL,
+        "version": SUPPORTED_VERSION,
+        "skills": skills,
+    }
+
+
+def save_policy(policy: Policy) -> None:
+    mapping = policy_to_mapping(policy)
+    Draft202012Validator(schema_document()).validate(mapping)
+    text = yaml.safe_dump(
+        mapping,
+        sort_keys=False,
+        allow_unicode=True,
+        default_flow_style=False,
+    )
+    policy.path.write_text(text, encoding="utf-8", newline="\n")
+
+
+def _optional_when(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None

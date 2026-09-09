@@ -4,6 +4,21 @@ Thumbs.db
 .env
 .env.*
 
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+build/
+dist/
+*.egg-info/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
 # Workspace-level Markdown. This kit is public and general-purpose; a backlog
 # and design drafts name the consumers that asked for each feature, so they
 # live in the private skillize umbrella instead of here.

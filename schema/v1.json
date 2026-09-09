@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/pleware/skillize/main/schema/v1.json",
+  "title": "skillize.yaml",
+  "description": "Skillize policy v1. Enable/disable named agent skills and overlay project-local when-to-use prose. Empty skills means nothing is enabled. Pin hashes stay in skills-lock.json. This file is not a skill format and not a host mounter.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "skills"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "format": "uri",
+      "description": "Optional pointer at this schema so editors can validate the file."
+    },
+    "version": {
+      "const": 1,
+      "description": "Schema generation. Integer 1 only; do not write 1.0."
+    },
+    "skills": {
+      "type": "object",
+      "description": "Map of skill directory names (the folder under .agents/skills that contains SKILL.md). An empty object enables nothing. Unknown names are a load error once a checker exists.",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9._-]*$",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/skill"
+      }
+    }
+  },
+  "$defs": {
+    "skill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled"],
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "When false, agentize must not compose or copy this skill even if a part or profile names it."
+        },
+        "when": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Project overlay: when this skill should fire in this tree. Does not rewrite the vendored SKILL.md description."
+        }
+      }
+    }
+  }
+}
