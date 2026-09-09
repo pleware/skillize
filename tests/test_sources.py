@@ -6,6 +6,7 @@ from pathlib import Path
 from skillize.catalogue import compose_skills
 from skillize.policy import Policy, Skill, load_policy, save_policy
 from skillize.sources import (
+    LOCAL_REPO,
     RemoteSkill,
     entries_from_tree_paths,
     fetch_repo_skills,
@@ -14,6 +15,7 @@ from skillize.sources import (
     refresh_catalogue,
     sources_from_lock,
     sources_to_fetch,
+    split_catalogue,
 )
 
 
@@ -221,3 +223,28 @@ def test_policy_sources_roundtrip(tmp_path: Path) -> None:
     loaded = load_policy(tmp_path)
     assert loaded.sources == ("addyosmani/agent-skills",)
     assert loaded.sources_declared is True
+
+
+def test_split_catalogue_installed_versus_available(tmp_path: Path) -> None:
+    skill = tmp_path / ".agents" / "skills" / "frontend-design"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("# frontend-design\n", encoding="utf-8")
+    vendored = tmp_path / ".agents" / "skills" / "house-only"
+    vendored.mkdir(parents=True)
+    (vendored / "SKILL.md").write_text("# house\n", encoding="utf-8")
+    entries = (
+        RemoteSkill(
+            "planning-and-task-breakdown",
+            "addyosmani/agent-skills",
+            "skills/planning-and-task-breakdown/SKILL.md",
+        ),
+        RemoteSkill(
+            "frontend-design",
+            "anthropics/skills",
+            "skills/frontend-design/SKILL.md",
+        ),
+    )
+    installed, available = split_catalogue(tmp_path, entries)
+    assert [entry.name for entry in installed] == ["frontend-design", "house-only"]
+    assert installed[1].repo == LOCAL_REPO
+    assert [entry.name for entry in available] == ["planning-and-task-breakdown"]

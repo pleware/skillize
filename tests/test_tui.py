@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from textual.widgets import Input, OptionList
+from textual.widgets import OptionList
 
 from skillize.catalogue import compose_skills
 from skillize.policy import Policy, load_policy, load_policy_or_empty
 from skillize.sources import RemoteSkill
-from skillize.tui import ConfigureApp, SkillizeApp
+from skillize.tui import ConfigureApp, InstallScreen, SkillizeApp
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples" / "skillize.yaml"
 
@@ -26,7 +26,10 @@ async def test_configure_toggles_and_saves(tmp_path: Path) -> None:
     assert "frontend-design" not in policy.enabled_names()
 
 
-async def test_browse_filters_and_installs(tmp_path: Path) -> None:
+async def test_installed_then_install_screen(tmp_path: Path) -> None:
+    already = tmp_path / ".agents" / "skills" / "frontend-design"
+    already.mkdir(parents=True)
+    (already / "SKILL.md").write_text("# on disk\n", encoding="utf-8")
     entries = (
         RemoteSkill(
             "planning-and-task-breakdown",
@@ -53,16 +56,21 @@ async def test_browse_filters_and_installs(tmp_path: Path) -> None:
     async with app.run_test() as pilot:
         await pilot.pause()
         listing = app.query_one("#browse", OptionList)
-        assert listing.option_count == 2
+        assert listing.option_count == 1
         first = str(listing.get_option_at_index(0).prompt)
-        assert "addyosmani/agent-skills/planning-and-task-breakdown" in first
-        search = app.query_one("#search", Input)
-        search.value = "front"
-        search.post_message(Input.Changed(search, search.value))
+        assert "anthropics/skills/frontend-design" in first
+        await pilot.click("#browse")
+        await pilot.press("a")
         await pilot.pause()
-        assert [entry.name for entry in app._visible] == ["frontend-design"]
+        screen = app.screen
+        assert isinstance(screen, InstallScreen)
+        add_list = screen.query_one("#browse", OptionList)
+        assert add_list.option_count == 1
+        assert "addyosmani/agent-skills/planning-and-task-breakdown" in str(
+            add_list.get_option_at_index(0).prompt
+        )
         await pilot.click("#browse")
         await pilot.press("i")
         await pilot.pause()
-    assert installed == ["frontend-design"]
-    assert (tmp_path / ".agents" / "skills" / "frontend-design" / "SKILL.md").is_file()
+    assert installed == ["planning-and-task-breakdown"]
+    assert (tmp_path / ".agents" / "skills" / "planning-and-task-breakdown" / "SKILL.md").is_file()

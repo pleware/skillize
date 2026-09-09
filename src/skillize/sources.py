@@ -22,6 +22,7 @@ USER_AGENT = "pleware-skillize (https://github.com/pleware/skillize)"
 SKILL_NAME = re.compile(r"^[a-z][a-z0-9._-]*$")
 REPO_NAME = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 CACHE_VERSION = 2
+LOCAL_REPO = "local"
 
 JsonGet = Callable[[str], Any]
 BytesGet = Callable[[str], bytes]
@@ -84,6 +85,37 @@ def filter_entries(entries: Iterable[RemoteSkill], query: str) -> tuple[RemoteSk
         for entry in ordered
         if needle in skill_slug(entry).lower() or needle in entry.skill_path.lower()
     )
+
+
+def split_catalogue(
+    project_root: Path,
+    entries: Iterable[RemoteSkill],
+) -> tuple[tuple[RemoteSkill, ...], tuple[RemoteSkill, ...]]:
+    """Installed on disk first, remaining GitHub pack rows second."""
+    from .catalogue import discover_names, skill_is_installed
+
+    ordered = tuple(sorted(entries, key=lambda entry: (entry.repo, entry.name)))
+    installed_remote = tuple(
+        entry for entry in ordered if skill_is_installed(project_root, entry.name)
+    )
+    available = tuple(
+        entry for entry in ordered if not skill_is_installed(project_root, entry.name)
+    )
+    remote_names = {entry.name for entry in ordered}
+    local_only = tuple(
+        RemoteSkill(
+            name=name,
+            repo=LOCAL_REPO,
+            skill_path=f".agents/skills/{name}/SKILL.md",
+            branch="",
+        )
+        for name in discover_names(project_root)
+        if name not in remote_names
+    )
+    installed = tuple(
+        sorted((*installed_remote, *local_only), key=lambda entry: (entry.repo, entry.name))
+    )
+    return installed, available
 
 
 def github_get_json(url: str) -> Any:
