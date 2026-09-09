@@ -2,8 +2,8 @@
 $schema: https://raw.githubusercontent.com/pleware/skillize/main/schema/v1.json
 version: 1
 
-# Optional. Listed at configure start, merged with unique GitHub `source`
-# values from skills-lock.json.
+# Extra packs besides the built-in catalogue (addyosmani, vercel-labs,
+# obra/superpowers) and unique GitHub `source` values in skills-lock.json.
 sources:
   - addyosmani/agent-skills
 

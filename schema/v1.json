@@ -18,7 +18,7 @@
     },
     "sources": {
       "type": "array",
-      "description": "GitHub owner/repo packs to list at configure start, merged with unique `source` values from skills-lock.json.",
+      "description": "Extra GitHub owner/repo packs to list in Install New, merged with the built-in catalogue and unique `source` values from skills-lock.json.",
       "items": {
         "type": "string",
         "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",

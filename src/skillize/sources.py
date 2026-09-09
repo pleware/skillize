@@ -23,6 +23,11 @@ SKILL_NAME = re.compile(r"^[a-z][a-z0-9._-]*$")
 REPO_NAME = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 CACHE_VERSION = 2
 LOCAL_REPO = "local"
+DEFAULT_SOURCES = (
+    "addyosmani/agent-skills",
+    "vercel-labs/agent-skills",
+    "obra/superpowers",
+)
 
 JsonGet = Callable[[str], Any]
 BytesGet = Callable[[str], bytes]
@@ -191,9 +196,9 @@ def sources_from_lock(project_root: Path) -> tuple[str, ...]:
 
 
 def sources_to_fetch(project_root: Path, policy: Policy) -> tuple[str, ...]:
-    """Yaml `sources:` first, then any extra GitHub repos from the lock."""
+    """Known packs, then yaml `sources:`, then extra GitHub repos from the lock."""
     seen: list[str] = []
-    for repo in (*policy.sources, *sources_from_lock(project_root)):
+    for repo in (*DEFAULT_SOURCES, *policy.sources, *sources_from_lock(project_root)):
         if repo not in seen:
             seen.append(repo)
     return tuple(seen)

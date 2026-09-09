@@ -6,6 +6,7 @@ from pathlib import Path
 from skillize.catalogue import compose_skills
 from skillize.policy import Policy, Skill, load_policy, save_policy
 from skillize.sources import (
+    DEFAULT_SOURCES,
     LOCAL_REPO,
     RemoteSkill,
     entries_from_tree_paths,
@@ -112,7 +113,7 @@ def test_yaml_sources_union_lock(tmp_path: Path) -> None:
         sources_declared=True,
     )
     assert sources_to_fetch(tmp_path, policy) == (
-        "addyosmani/agent-skills",
+        *DEFAULT_SOURCES,
         "anthropics/skills",
     )
 
@@ -142,15 +143,20 @@ def test_refresh_uses_injected_fetch_and_writes_cache(tmp_path: Path) -> None:
         sources_declared=True,
     )
 
+    fetched: list[str] = []
+
     def fake_fetch(repo: str) -> tuple[str, ...]:
-        assert repo == "addyosmani/agent-skills"
-        return ("incremental-implementation", "planning-and-task-breakdown")
+        fetched.append(repo)
+        if repo == "addyosmani/agent-skills":
+            return ("incremental-implementation", "planning-and-task-breakdown")
+        return ()
 
     names, note = refresh_catalogue(tmp_path, policy, fetch=fake_fetch)
     assert tuple(entry.name for entry in names) == (
         "incremental-implementation",
         "planning-and-task-breakdown",
     )
+    assert fetched[:3] == list(DEFAULT_SOURCES)
     assert "2 skills" in note
     cache = json.loads((tmp_path / ".skillize" / "catalogue.json").read_text(encoding="utf-8"))
     assert cache["version"] == 2
