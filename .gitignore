@@ -29,3 +29,10 @@ htmlcov/
 
 # `.skillize/` needs no rule: it is machine state and carries its own `*`.
 # The policy it pairs with is `skillize.yaml` at the root, which is tracked.
+
+# agentize-generated rules: per-instance, never commit.
+.cursor/rules/agentize.auto.generated*
+
+# agentize-generated skills: per-instance, mount re-emits them.
+.cursor/skills/agentize.auto.generated*
+.opencode/skills/agentize.auto.generated*
