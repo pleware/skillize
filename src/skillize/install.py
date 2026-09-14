@@ -28,6 +28,19 @@ MAX_FILES = 80
 MAX_BYTES = 1_048_576
 LOCK_VERSION = 1
 
+
+def tree_digest(root: Path) -> str:
+    """SHA-256 over every file in the skill, keyed by its relative path."""
+    digest = hashlib.sha256()
+    for path in sorted(item for item in root.rglob("*") if item.is_file()):
+        rel = path.relative_to(root).as_posix()
+        digest.update(rel.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
 JsonGet = Callable[[str], object]
 BytesGet = Callable[[str], bytes]
 
@@ -95,8 +108,7 @@ def install_skill(
             target = staging / rel
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(payload)
-        skill_md = staging / SKILL_FILE
-        digest = hashlib.sha256(skill_md.read_bytes()).hexdigest()
+        digest = tree_digest(staging)
         dest.parent.mkdir(parents=True, exist_ok=True)
         if dest.is_dir():
             shutil.rmtree(dest)
@@ -135,7 +147,7 @@ def _install_bundled(project_root: Path, entry: RemoteSkill) -> Path:
         skill_md = staging / SKILL_FILE
         if not skill_md.is_file():
             raise InstallError(f"{entry.name}: bundled SKILL.md missing")
-        digest = hashlib.sha256(skill_md.read_bytes()).hexdigest()
+        digest = tree_digest(staging)
         dest.parent.mkdir(parents=True, exist_ok=True)
         if dest.is_dir():
             shutil.rmtree(dest)
@@ -241,6 +253,7 @@ def _upsert_lock(
     existing["source"] = entry.repo
     existing["sourceType"] = source_type
     existing["skillPath"] = entry.skill_path
+    existing["branch"] = entry.branch
     existing["computedHash"] = digest
     skills[entry.name] = existing
     raw["version"] = raw.get("version", LOCK_VERSION)

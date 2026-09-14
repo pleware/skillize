@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from skillize.errors import InstallError
-from skillize.install import install_skill, uninstall_skill
+from skillize.install import install_skill, tree_digest, uninstall_skill
 from skillize.policy import Policy, Skill, load_policy, save_policy
 from skillize.sources import RemoteSkill
 
@@ -54,7 +54,8 @@ def test_install_writes_files_and_lock(tmp_path: Path) -> None:
     assert body["source"] == "anthropics/skills"
     assert body["sourceType"] == "github"
     assert body["skillPath"] == "skills/frontend-design/SKILL.md"
-    assert body["computedHash"] == hashlib.sha256(b"# frontend-design\n").hexdigest()
+    assert body["branch"] == "main"
+    assert body["computedHash"] == tree_digest(dest)
 
 
 def test_install_rejects_path_escape(tmp_path: Path) -> None:
@@ -105,7 +106,9 @@ def test_install_upserts_existing_lock_row(tmp_path: Path) -> None:
     lock = json.loads((tmp_path / "skills-lock.json").read_text(encoding="utf-8"))
     assert "keep-me" in lock["skills"]
     assert lock["skills"]["frontend-design"]["source"] == "anthropics/skills"
-    assert lock["skills"]["frontend-design"]["computedHash"] == hashlib.sha256(b"new\n").hexdigest()
+    assert lock["skills"]["frontend-design"]["computedHash"] == tree_digest(
+        tmp_path / ".agents" / "skills" / "frontend-design"
+    )
 
 
 def test_install_bundled_php7(tmp_path: Path) -> None:
@@ -126,7 +129,8 @@ def test_install_bundled_php7(tmp_path: Path) -> None:
     assert body["source"] == "pleware/skillize"
     assert body["sourceType"] == "bundled"
     assert body["skillPath"] == "bundled/php7/SKILL.md"
-    assert body["computedHash"] == hashlib.sha256(skill_md.read_bytes()).hexdigest()
+    assert body["branch"] == ""
+    assert body["computedHash"] == tree_digest(dest)
 
 
 def test_uninstall_removes_files_lock_and_policy(tmp_path: Path) -> None:

@@ -82,7 +82,7 @@ def test_php7_and_php8_cannot_both_be_on(tmp_path: Path) -> None:
             Skill(name="php8", enabled=False),
         ),
     )
-    switched = with_skill_enabled(policy, "php8", True)
+    switched = with_skill_enabled(policy, "php8", True, mutex_groups=(("php7", "php8"),))
     assert switched.enabled_names() == ("php8",)
 
 

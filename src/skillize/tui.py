@@ -26,6 +26,7 @@ from textual.widgets import (
 from textual.widgets.option_list import Option
 from textual.widgets.selection_list import Selection
 
+from .builtin import mutex_groups
 from .errors import SkillizeError
 from .install import install_skill, uninstall_skill
 from .policy import (
@@ -618,7 +619,9 @@ class InstalledScreen(CatalogueTools, Screen[None]):
         if entry is None:
             return
         turned_on = not self._skill_is_on(entry.name)
-        self._policy = with_skill_enabled(self._policy, entry.name, turned_on)
+        self._policy = with_skill_enabled(
+            self._policy, entry.name, turned_on, mutex_groups(self._entries)
+        )
         save_policy(self._policy)
         self._refresh_list(keep=entry.name)
         self.notify(f"{entry.name} {'on' if turned_on else 'off'}")

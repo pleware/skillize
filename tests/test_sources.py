@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from skillize.builtin import BUNDLED_REPO, bundled_entries
+from skillize.builtin import BUNDLED_REPO, bundled_entries, mutex_groups
 from skillize.catalogue import compose_skills
 from skillize.policy import Policy, Skill, load_policy, save_policy
 from skillize.sources import (
@@ -36,6 +36,11 @@ def test_bundled_catalogue_includes_php7() -> None:
     assert [entry.name for entry in entries] == ["php7"]
     assert entries[0].repo == BUNDLED_REPO
     assert entries[0].skill_path == "bundled/php7/SKILL.md"
+    assert entries[0].conflicts == ("php8",)
+
+
+def test_mutex_groups_derive_from_conflicts() -> None:
+    assert mutex_groups(bundled_entries()) == (("php7", "php8"),)
 
 
 def test_names_from_skill_markdown_paths() -> None:

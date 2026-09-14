@@ -1,5 +1,6 @@
 ---
 name: php7
+conflicts: [php8]
 description: >
   Write and review PHP that must parse on PHP 7.2–7.4 (treat 7.4 as the
   default). Use when editing PHP, Composer, PHPUnit, or Laravel 5–7 in a

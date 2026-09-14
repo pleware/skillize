@@ -39,9 +39,6 @@ class Policy:
         return tuple(skill.name for skill in self.skills if skill.enabled)
 
 
-MUTEX_GROUPS = (("php7", "php8"),)
-
-
 def _upsert_skill(policy: Policy, skill: Skill) -> Policy:
     rows = {item.name: item for item in policy.skills}
     rows[skill.name] = skill
@@ -61,8 +58,18 @@ def _upsert_skill(policy: Policy, skill: Skill) -> Policy:
     )
 
 
-def with_skill_enabled(policy: Policy, name: str, enabled: bool) -> Policy:
-    """Return a copy with `name` on or off. php7 and php8 cannot both be on."""
+def with_skill_enabled(
+    policy: Policy,
+    name: str,
+    enabled: bool,
+    mutex_groups: tuple[tuple[str, ...], ...] = (),
+) -> Policy:
+    """Return a copy with `name` on or off.
+
+    Skills in the same `mutex_groups` set cannot both be on; enabling one
+    disables the rest. The groups are data, derived from bundled `conflicts`
+    (see `builtin.mutex_groups`), not hardcoded here.
+    """
     previous = next((item for item in policy.skills if item.name == name), None)
     updated = _upsert_skill(
         policy,
@@ -70,7 +77,7 @@ def with_skill_enabled(policy: Policy, name: str, enabled: bool) -> Policy:
     )
     if not enabled:
         return updated
-    for group in MUTEX_GROUPS:
+    for group in mutex_groups:
         if name not in group:
             continue
         for other in group:

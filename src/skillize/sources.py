@@ -46,6 +46,8 @@ class RemoteSkill:
     repo: str
     skill_path: str
     branch: str = "main"
+    conflicts: tuple[str, ...] = ()
+    """Skill names this skill cannot be enabled alongside (mutual exclusion)."""
 
 
 def names_from_tree_paths(paths: Iterable[str]) -> tuple[str, ...]:
